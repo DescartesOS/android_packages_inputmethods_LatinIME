@@ -39,6 +39,7 @@ import com.android.inputmethod.keyboard.internal.MoreKeySpec;
 import com.android.inputmethod.latin.R;
 import com.android.inputmethod.latin.common.Constants;
 import com.android.inputmethod.latin.common.StringUtils;
+import com.android.inputmethod.latin.utils.Fonts;
 
 import java.util.Arrays;
 import java.util.Locale;
@@ -675,7 +676,7 @@ public class Key implements Comparable<Key> {
     public final Typeface selectTypeface(final KeyDrawParams params) {
         switch (mLabelFlags & LABEL_FLAGS_FONT_MASK) {
         case LABEL_FLAGS_FONT_NORMAL:
-            return Typeface.DEFAULT;
+            return Fonts.regular();
         case LABEL_FLAGS_FONT_MONO_SPACE:
             return Typeface.MONOSPACE;
         case LABEL_FLAGS_FONT_DEFAULT:
@@ -753,7 +754,7 @@ public class Key implements Comparable<Key> {
         if (previewHasLetterSize()) {
             return selectTypeface(params);
         }
-        return Typeface.DEFAULT_BOLD;
+        return Fonts.medium();
     }
 
     public final boolean isAlignHintLabelToBottom(final int defaultFlags) {

@@ -53,11 +53,13 @@ public final class KeyboardIconsSet {
     public static final String NAME_TAB_KEY = "tab_key";
     public static final String NAME_SHORTCUT_KEY = "shortcut_key";
     public static final String NAME_SHORTCUT_KEY_DISABLED = "shortcut_key_disabled";
+    public static final String NAME_LANGUAGE_SWITCH_KEY = "language_switch_key";
     public static final String NAME_ZWNJ_KEY = "zwnj_key";
     public static final String NAME_ZWJ_KEY = "zwj_key";
     public static final String NAME_EMOJI_ACTION_KEY = "emoji_action_key";
     public static final String NAME_EMOJI_NORMAL_KEY = "emoji_normal_key";
     public static final String NAME_CLIPBOARD_PASTE_KEY = "clipboard_paste_key";
+    public static final String NAME_SHIFT_KEY_LOCKED = "shift_key_locked";
 
     private static final SparseIntArray ATTR_ID_TO_ICON_ID = new SparseIntArray();
 
@@ -82,11 +84,13 @@ public final class KeyboardIconsSet {
         NAME_SPACE_KEY_FOR_NUMBER_LAYOUT, R.styleable.Keyboard_iconSpaceKeyForNumberLayout,
         NAME_SHIFT_KEY_SHIFTED,           R.styleable.Keyboard_iconShiftKeyShifted,
         NAME_SHORTCUT_KEY_DISABLED,       R.styleable.Keyboard_iconShortcutKeyDisabled,
+        NAME_LANGUAGE_SWITCH_KEY,         R.styleable.Keyboard_iconLanguageSwitchKey,
         NAME_ZWNJ_KEY,                    R.styleable.Keyboard_iconZwnjKey,
         NAME_ZWJ_KEY,                     R.styleable.Keyboard_iconZwjKey,
         NAME_EMOJI_ACTION_KEY,            R.styleable.Keyboard_iconEmojiActionKey,
         NAME_EMOJI_NORMAL_KEY,            R.styleable.Keyboard_iconEmojiNormalKey,
         NAME_CLIPBOARD_PASTE_KEY,         R.styleable.Keyboard_iconClipboardPasteKey,
+        NAME_SHIFT_KEY_LOCKED,            R.styleable.Keyboard_iconShiftKeyLocked,
     };
 
     private static int NUM_ICONS = NAMES_AND_ATTR_IDS.length / 2;
@@ -123,6 +127,12 @@ public final class KeyboardIconsSet {
                         + keyboardAttrs.getResources().getResourceEntryName(attrId)
                         + " not found");
             }
+        }
+        final int lockedId = getIconId(NAME_SHIFT_KEY_LOCKED);
+        final int shiftedId = getIconId(NAME_SHIFT_KEY_SHIFTED);
+        if (mIcons[lockedId] == null) {
+            mIcons[lockedId] = mIcons[shiftedId];
+            mIconResourceIds[lockedId] = mIconResourceIds[shiftedId];
         }
     }
 

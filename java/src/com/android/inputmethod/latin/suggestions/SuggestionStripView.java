@@ -56,6 +56,7 @@ import com.android.inputmethod.latin.define.DebugFlags;
 import com.android.inputmethod.latin.settings.Settings;
 import com.android.inputmethod.latin.settings.SettingsValues;
 import com.android.inputmethod.latin.suggestions.MoreSuggestionsView.MoreSuggestionsListener;
+import com.android.inputmethod.latin.utils.Fonts;
 import com.android.inputmethod.latin.utils.ImportantNoticeUtils;
 import com.android.inputmethod.latin.utils.SplitKeyboardUtils;
 
@@ -71,10 +72,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         public void showImportantNoticeContents();
         public void pickSuggestionManually(SuggestedWordInfo word);
         public void onCodeInput(int primaryCode, int x, int y, boolean isKeyRepeat);
-        public void toggleSplitKeyboard();
-        public void toggleFloatingKeyboard();
-        public void pickClipboardSuggestion(ClipboardSuggestion suggestion,
-                ClipboardSuggestion.Match match);
+        public void onToolbarAction(int viewId);
     }
 
     static final boolean DBG = DebugFlags.DEBUG_ENABLED;
@@ -89,12 +87,10 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
     private final ImageButton mFloatKey;
     private final int mDockedStripMargin;
     private final View mImportantNoticeStrip;
-    private final InlineSuggestionsStrip mInlineSuggestionsStrip;
-    private final ViewGroup mClipboardSuggestionStrip;
-    @Nullable
-    private ClipboardSuggestion mClipboardSuggestion;
-    private boolean mShouldBeVisible = true;
-    private boolean mIsFullscreenMode;
+    private final View mToolbar;
+    private final TextView mClipChip;
+    private boolean mToolbarEnabled = true;
+    private CharSequence mClipChipText;
     MainKeyboardView mMainKeyboardView;
 
     private final View mMoreSuggestionsContainer;
@@ -183,13 +179,27 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mDockedStripMargin =
                 ((MarginLayoutParams) mSuggestionsStrip.getLayoutParams()).getMarginStart();
         mImportantNoticeStrip = findViewById(R.id.important_notice_strip);
-        mInlineSuggestionsStrip = findViewById(R.id.inline_suggestions_strip);
-        mClipboardSuggestionStrip = findViewById(R.id.clipboard_suggestion_strip);
+        mToolbar = findViewById(R.id.glass_toolbar);
+        mClipChip = (TextView)findViewById(R.id.glass_clip_chip);
+        mClipChip.setTypeface(Fonts.regular());
+        final View.OnClickListener toolbarClick = v -> {
+            AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(
+                    Constants.CODE_UNSPECIFIED, v);
+            if (mListener != null) {
+                mListener.onToolbarAction(v.getId());
+            }
+        };
+        for (final int id : new int[] { R.id.glass_toolbar_clipboard, R.id.glass_toolbar_edit,
+                R.id.glass_toolbar_one_handed, R.id.glass_toolbar_settings,
+                R.id.glass_toolbar_hide, R.id.glass_clip_chip }) {
+            findViewById(id).setOnClickListener(toolbarClick);
+        }
         mStripVisibilityGroup = new StripVisibilityGroup(this, mSuggestionsStrip,
                 mImportantNoticeStrip, mInlineSuggestionsStrip, mClipboardSuggestionStrip);
 
         for (int pos = 0; pos < SuggestedWords.MAX_SUGGESTIONS; pos++) {
             final TextView word = new TextView(context, null, R.attr.suggestionWordStyle);
+            word.setTypeface(Fonts.regular());
             word.setContentDescription(getResources().getString(R.string.spoken_empty_suggestion));
             word.setOnClickListener(this);
             word.setOnLongClickListener(this);
@@ -244,56 +254,34 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         final int visibility = isVisible ? VISIBLE : (isFullscreenMode ? GONE : INVISIBLE);
         setVisibility(visibility);
         final SettingsValues currentSettingsValues = Settings.getInstance().getCurrent();
-        mVoiceKey.setVisibility(currentSettingsValues.mShowsVoiceInputKey ? VISIBLE : INVISIBLE);
-        updateSplitKey();
-        updateFloatKey();
+        mVoiceKey.setVisibility(GONE);
+        mToolbarEnabled = currentSettingsValues.mShowToolbar;
+        updateToolbarVisibility();
     }
 
-    public ColorStateList getToolKeyTintList() {
-        return mWordViews.get(0).getTextColors();
+    private void updateToolbarVisibility() {
+        final boolean showToolbar = mToolbarEnabled && mSuggestedWords.isEmpty()
+                && !mStripVisibilityGroup.isShowingImportantNoticeStrip();
+        mToolbar.setVisibility(showToolbar ? VISIBLE : GONE);
+        mSuggestionsStrip.setVisibility(showToolbar ? INVISIBLE : VISIBLE);
     }
 
-    private void updateFloatKey() {
-        final boolean isFloating = Settings.getInstance().getCurrent().mIsFloatingKeyboardEnabled;
-        mFloatKey.setActivated(isFloating);
-        mFloatKey.setImageAlpha(isFloating ? TOOL_KEY_ALPHA_ON : TOOL_KEY_ALPHA_OFF);
-        mFloatKey.setContentDescription(getResources().getString(isFloating
-                ? R.string.spoken_description_dock_keyboard
-                : R.string.spoken_description_float_keyboard));
-        final int margin = isFloating
-                ? getResources().getDimensionPixelSize(
-                        R.dimen.config_suggestions_strip_edge_key_width)
-                : mDockedStripMargin;
-        setHorizontalMargins(mSuggestionsStrip, margin);
-        setHorizontalMargins(mImportantNoticeStrip, margin);
-        setHorizontalMargins(mInlineSuggestionsStrip, margin);
-        setHorizontalMargins(mClipboardSuggestionStrip, margin);
-    }
-
-    private static void setHorizontalMargins(final View view, final int margin) {
-        final MarginLayoutParams params = (MarginLayoutParams) view.getLayoutParams();
-        if (params.getMarginStart() == margin && params.getMarginEnd() == margin) {
+    public void setClipChip(final CharSequence text) {
+        mClipChipText = text;
+        if (TextUtils.isEmpty(text)) {
+            mClipChip.setVisibility(INVISIBLE);
+            mClipChip.setText(null);
             return;
         }
-        params.setMargins(margin, params.topMargin, margin, params.bottomMargin);
-        params.setMarginStart(margin);
-        params.setMarginEnd(margin);
-        view.setLayoutParams(params);
+        final String oneLine = text.toString().replace('\n', ' ').trim();
+        mClipChip.setText(oneLine);
+        mClipChip.setContentDescription(
+                getResources().getString(R.string.glass_paste_chip_description, oneLine));
+        mClipChip.setVisibility(VISIBLE);
     }
 
-    private void updateSplitKey() {
-        if (Settings.getInstance().getCurrent().mIsFloatingKeyboardEnabled
-                || !SplitKeyboardUtils.isSplitKeyboardAvailable(getResources())) {
-            mSplitKey.setVisibility(GONE);
-            return;
-        }
-        final boolean isSplit = Settings.getInstance().getCurrent().mIsSplitKeyboardEnabled;
-        mSplitKey.setVisibility(VISIBLE);
-        mSplitKey.setActivated(isSplit);
-        mSplitKey.setImageAlpha(isSplit ? TOOL_KEY_ALPHA_ON : TOOL_KEY_ALPHA_OFF);
-        mSplitKey.setContentDescription(getResources().getString(isSplit
-                ? R.string.spoken_description_merge_keyboard
-                : R.string.spoken_description_split_keyboard));
+    public CharSequence getClipChipText() {
+        return mClipChipText;
     }
 
     public void setSuggestions(final SuggestedWords suggestedWords, final boolean isRtlLanguage) {
@@ -302,65 +290,8 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         mSuggestedWords = suggestedWords;
         mStartIndexOfMoreSuggestions = mLayoutHelper.layoutAndReturnStartIndexOfMoreSuggestions(
                 getContext(), mSuggestedWords, mSuggestionsStrip, this);
-        mStripVisibilityGroup.showSuggestionsStrip(shouldShowClipboardSuggestion());
-    }
-
-    @Nullable
-    public InlineSuggestionsRequest createInlineSuggestionsRequest(@Nonnull final Bundle uiExtras) {
-        return mInlineSuggestionsStrip.createRequest(uiExtras,
-                getToolKeyTintList().getDefaultColor());
-    }
-
-    public void setInlineSuggestions(@Nonnull final List<InlineSuggestion> suggestions) {
-        mInlineSuggestionsStrip.setSuggestions(suggestions);
-        if (isShowingMoreSuggestionPanel()) {
-            dismissMoreSuggestionsPanel();
-        }
-        mStripVisibilityGroup.showSuggestionsStrip(shouldShowClipboardSuggestion());
-        updateVisibility(mShouldBeVisible, mIsFullscreenMode);
-    }
-
-    public void setClipboardSuggestion(@Nullable final ClipboardSuggestion suggestion) {
-        mClipboardSuggestion = suggestion;
-        mClipboardSuggestionStrip.removeAllViews();
-        if (suggestion != null) {
-            for (final ClipboardSuggestion.Match match : suggestion.getMatches()) {
-                mClipboardSuggestionStrip.addView(
-                        createClipboardSuggestionChip(match, suggestion.isSensitive()));
-            }
-        }
-        mStripVisibilityGroup.showSuggestionsStrip(shouldShowClipboardSuggestion());
-    }
-
-    @Nonnull
-    private TextView createClipboardSuggestionChip(@Nonnull final ClipboardSuggestion.Match match,
-            final boolean isSensitive) {
-        final TextView chip = (TextView)LayoutInflater.from(getContext())
-                .inflate(R.layout.clipboard_suggestion_chip, mClipboardSuggestionStrip, false);
-        final ColorStateList tint = getToolKeyTintList();
-        chip.setTextColor(tint);
-        chip.setCompoundDrawableTintList(tint);
-        chip.setBackgroundTintList(ColorStateList.valueOf(
-                InlineSuggestionsStrip.getChipBackgroundColor(tint.getDefaultColor())));
-        chip.setCompoundDrawablesRelativeWithIntrinsicBounds(
-                match.getType() == ClipboardSuggestion.Type.CODE
-                        ? R.drawable.ic_suggestion_code : R.drawable.ic_suggestion_clipboard,
-                0, 0, 0);
-        final Resources res = getResources();
-        chip.setText(isSensitive ? SENSITIVE_CLIPBOARD_LABEL : match.getText());
-        chip.setContentDescription(isSensitive
-                ? res.getString(R.string.clipboard_suggestion_sensitive_description)
-                : res.getString(R.string.clipboard_suggestion_description, match.getText()));
-        chip.setTag(match);
-        chip.setOnClickListener(this);
-        return chip;
-    }
-
-    private boolean shouldShowClipboardSuggestion() {
-        return mClipboardSuggestion != null
-                && (mSuggestedWords.isEmpty() || mSuggestedWords.isPunctuationSuggestions()
-                        || mSuggestedWords.mInputStyle
-                                == SuggestedWords.INPUT_STYLE_BEGINNING_OF_SENTENCE_PREDICTION);
+        mStripVisibilityGroup.showSuggestionsStrip();
+        updateToolbarVisibility();
     }
 
     public void setMoreSuggestionsHeight(final int remainingHeight) {
@@ -389,6 +320,7 @@ public final class SuggestionStripView extends RelativeLayout implements OnClick
         }
         mLayoutHelper.layoutImportantNotice(mImportantNoticeStrip, importantNoticeTitle);
         mStripVisibilityGroup.showImportantNoticeStrip();
+        updateToolbarVisibility();
         mImportantNoticeStrip.setOnClickListener(this);
         return true;
     }

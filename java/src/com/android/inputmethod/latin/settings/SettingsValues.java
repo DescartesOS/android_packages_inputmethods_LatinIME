@@ -70,7 +70,14 @@ public class SettingsValues {
     public final boolean mShowNumberRow;
     public final boolean mShowNumberRowPassword;
     public final boolean mShowLongpressHints;
-    public final boolean mShowClipboardSuggestions;
+    public final boolean mShowToolbar;
+    public final boolean mClipboardHistoryEnabled;
+    public final boolean mClipboardSuggestionEnabled;
+    public final boolean mSpaceCursorEnabled;
+    public final boolean mDeleteSwipeEnabled;
+    public final int mOneHandedMode;
+    public final boolean mIncludesOtherImesInLanguageSwitchList;
+    public final boolean mShowsLanguageSwitchKey;
     public final boolean mShowsEmojiKey;
     public final boolean mUseContactsDict;
     public final boolean mUsePersonalizedDicts;
@@ -150,9 +157,18 @@ public class SettingsValues {
         mShowNumberRow = prefs.getBoolean(Settings.PREF_SHOW_NUMBER_ROW, false);
         mShowNumberRowPassword = prefs.getBoolean(Settings.PREF_SHOW_NUMBER_ROW_PASSWORD, false);
         mShowLongpressHints = prefs.getBoolean(Settings.PREF_SHOW_LONGPRESS_HINTS, true);
-        mShowClipboardSuggestions =
-                prefs.getBoolean(Settings.PREF_SHOW_CLIPBOARD_SUGGESTIONS, true);
-        mShowsEmojiKey = prefs.getBoolean(Settings.PREF_SHOW_EMOJI_KEY, true);
+        mShowToolbar = prefs.getBoolean(Settings.PREF_SHOW_TOOLBAR, true);
+        mClipboardHistoryEnabled = prefs.getBoolean(Settings.PREF_CLIPBOARD_HISTORY, true);
+        mClipboardSuggestionEnabled = prefs.getBoolean(Settings.PREF_CLIPBOARD_SUGGESTION, true);
+        mSpaceCursorEnabled = prefs.getBoolean(Settings.PREF_SPACE_CURSOR, true);
+        mDeleteSwipeEnabled = prefs.getBoolean(Settings.PREF_DELETE_SWIPE, true);
+        mOneHandedMode = prefs.getInt(Settings.PREF_ONE_HANDED_MODE, Settings.ONE_HANDED_OFF);
+        mIncludesOtherImesInLanguageSwitchList = Settings.ENABLE_SHOW_LANGUAGE_SWITCH_KEY_SETTINGS
+                ? prefs.getBoolean(Settings.PREF_INCLUDE_OTHER_IMES_IN_LANGUAGE_SWITCH_LIST, false)
+                : true /* forcibly */;
+        mShowsLanguageSwitchKey = Settings.ENABLE_SHOW_LANGUAGE_SWITCH_KEY_SETTINGS
+                ? Settings.readShowsLanguageSwitchKey(prefs) : true /* forcibly */;
+        mShowsEmojiKey = prefs.getBoolean(Settings.PREF_SHOW_EMOJI_KEY, false);
         mUseContactsDict = prefs.getBoolean(Settings.PREF_KEY_USE_CONTACTS_DICT, true);
         mUsePersonalizedDicts = prefs.getBoolean(Settings.PREF_KEY_USE_PERSONALIZED_DICTS, true);
         mUseDoubleSpacePeriod = prefs.getBoolean(Settings.PREF_KEY_USE_DOUBLE_SPACE_PERIOD, true)

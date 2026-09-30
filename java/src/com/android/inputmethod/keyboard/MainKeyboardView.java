@@ -40,6 +40,7 @@ import com.android.inputmethod.accessibility.AccessibilityUtils;
 import com.android.inputmethod.accessibility.MainKeyboardAccessibilityDelegate;
 import com.android.inputmethod.annotations.ExternallyReferenced;
 import com.android.inputmethod.keyboard.internal.DrawingPreviewPlacerView;
+import com.android.inputmethod.keyboard.internal.PreviewOverlay;
 import com.android.inputmethod.keyboard.internal.DrawingProxy;
 import com.android.inputmethod.keyboard.internal.GestureFloatingTextDrawingPreview;
 import com.android.inputmethod.keyboard.internal.GestureTrailsDrawingPreview;
@@ -50,7 +51,6 @@ import com.android.inputmethod.keyboard.internal.KeyPreviewView;
 import com.android.inputmethod.keyboard.internal.MoreKeySpec;
 import com.android.inputmethod.keyboard.internal.NonDistinctMultitouchHelper;
 import com.android.inputmethod.keyboard.internal.SlidingKeyInputDrawingPreview;
-import com.android.inputmethod.keyboard.internal.SwipeDownDigitPreview;
 import com.android.inputmethod.keyboard.internal.TimerHandler;
 import com.android.inputmethod.latin.R;
 import com.android.inputmethod.latin.RichInputMethodSubtype;
@@ -137,11 +137,11 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     // Stuff to draw altCodeWhileTyping keys.
     private final ObjectAnimator mAltCodeKeyWhileTypingFadeoutAnimator;
     private final ObjectAnimator mAltCodeKeyWhileTypingFadeinAnimator;
-    private final SwipeDownDigitPreview mSwipeDownDigitPreview = new SwipeDownDigitPreview(this);
     private int mAltCodeKeyWhileTypingAnimAlpha = Constants.Color.ALPHA_OPAQUE;
 
     // Drawing preview placer view
     private final DrawingPreviewPlacerView mDrawingPreviewPlacerView;
+    private final PreviewOverlay mPreviewOverlay;
     private final int[] mOriginCoords = CoordinateUtils.newInstance();
     private final GestureFloatingTextDrawingPreview mGestureFloatingTextDrawingPreview;
     private final GestureTrailsDrawingPreview mGestureTrailsDrawingPreview;
@@ -259,6 +259,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         mainKeyboardViewAttr.recycle();
 
         mDrawingPreviewPlacerView = drawingPreviewPlacerView;
+        mPreviewOverlay = new PreviewOverlay(context);
 
         final LayoutInflater inflater = LayoutInflater.from(getContext());
         mMoreKeysKeyboardContainer = inflater.inflate(moreKeysKeyboardLayoutId, null);
@@ -444,23 +445,43 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     }
 
     private void locatePreviewPlacerView() {
-        getLocationInWindow(mOriginCoords);
+        mPreviewOverlay.getLocationInOverlay(this, mOriginCoords);
         mDrawingPreviewPlacerView.setKeyboardViewGeometry(mOriginCoords, getWidth(), getHeight());
     }
 
     private void installPreviewPlacerView() {
-        final View rootView = getRootView();
-        if (rootView == null) {
-            Log.w(TAG, "Cannot find root view");
+        if (mDrawingPreviewPlacerView.getParent() == null) {
+            mPreviewOverlay.getRoot().addView(mDrawingPreviewPlacerView);
+        }
+        showPreviewOverlay();
+    }
+
+    private final Runnable mShowPreviewOverlay = this::showPreviewOverlay;
+
+    private void showPreviewOverlay() {
+        if (isAttachedToWindow() && isShown()) {
+            mPreviewOverlay.show(this);
+        }
+    }
+
+    @Override
+    protected void onLayout(final boolean changed, final int left, final int top, final int right,
+            final int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+        removeCallbacks(mShowPreviewOverlay);
+        post(mShowPreviewOverlay);
+    }
+
+    @Override
+    protected void onVisibilityChanged(final View changedView, final int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+        if (!isAttachedToWindow()) {
             return;
         }
-        final ViewGroup windowContentView = (ViewGroup)rootView.findViewById(android.R.id.content);
-        // Note: It'd be very weird if we get null by android.R.id.content.
-        if (windowContentView == null) {
-            Log.w(TAG, "Cannot find android.R.id.content view to add DrawingPreviewPlacerView");
-            return;
+        if (isShown()) {
+            removeCallbacks(mShowPreviewOverlay);
+            post(mShowPreviewOverlay);
         }
-        windowContentView.addView(mDrawingPreviewPlacerView);
     }
 
     // Implements {@link DrawingProxy#onKeyPressed(Key,boolean)}.
@@ -485,7 +506,6 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         }
 
         locatePreviewPlacerView();
-        getLocationInWindow(mOriginCoords);
         mKeyPreviewChoreographer.placeAndShowKeyPreview(key, keyboard.mIconsSet, getKeyDrawParams(),
                 getWidth(), mOriginCoords, mDrawingPreviewPlacerView, isHardwareAccelerated());
     }
@@ -499,7 +519,6 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     @Override
     public void onKeyReleased(@Nonnull final Key key, final boolean withAnimation) {
         key.onReleased();
-        mSwipeDownDigitPreview.dismiss(key);
         invalidateKey(key);
         if (!key.noKeyPreview()) {
             if (withAnimation) {
@@ -508,16 +527,6 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
                 dismissKeyPreviewWithoutDelay(key);
             }
         }
-    }
-
-    @Override
-    public void showSwipeDownDigit(@Nonnull final Key key) {
-        mSwipeDownDigitPreview.show(key);
-    }
-
-    @Override
-    public void dismissSwipeDownDigit(@Nonnull final Key key) {
-        mSwipeDownDigitPreview.dismiss(key);
     }
 
     private void dismissKeyPreview(@Nonnull final Key key) {
@@ -594,13 +603,25 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        installPreviewPlacerView();
+        post(this::installPreviewPlacerView);
     }
 
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        removeCallbacks(mShowPreviewOverlay);
         mDrawingPreviewPlacerView.removeAllViews();
+        mPreviewOverlay.getRoot().removeView(mDrawingPreviewPlacerView);
+        mPreviewOverlay.dismiss();
+    }
+
+    public void onWindowHidden() {
+        mPreviewOverlay.dismiss();
+    }
+
+    public void onWindowShown() {
+        removeCallbacks(mShowPreviewOverlay);
+        post(mShowPreviewOverlay);
     }
 
     // Implements {@link DrawingProxy@showMoreKeysKeyboard(Key,PointerTracker)}.
@@ -675,6 +696,11 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         mSlidingKeyInputDrawingPreview.dismissSlidingKeyInputPreview();
         panel.showInParent(mDrawingPreviewPlacerView);
         mMoreKeysPanel = panel;
+        mPreviewOverlay.setTouchable(true, () -> {
+            if (mMoreKeysPanel != null) {
+                mMoreKeysPanel.dismissMoreKeysPanel();
+            }
+        });
     }
 
     public boolean isShowingMoreKeysPanel() {
@@ -692,6 +718,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
             mMoreKeysPanel.removeFromParent();
             mMoreKeysPanel = null;
         }
+        mPreviewOverlay.setTouchable(false, null);
     }
 
     public void startDoubleTapShiftKeyTimer() {
@@ -820,11 +847,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         if (key.altCodeWhileTyping() && key.isEnabled()) {
             params.mAnimAlpha = mAltCodeKeyWhileTypingAnimAlpha;
         }
-        final int saveCount = canvas.save();
-        mSwipeDownDigitPreview.slideOutKeyTop(key, canvas, params);
         super.onDrawKeyTopVisuals(key, canvas, paint, params);
-        canvas.restoreToCount(saveCount);
-        mSwipeDownDigitPreview.slideInDigit(key, canvas, paint, params);
         final int code = key.getCode();
         if (code == Constants.CODE_SPACE && key.isLongPressEnabled()) {
             // If input language are explicitly selected.
@@ -835,6 +858,8 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
             if (key.isLongPressEnabled() && mHasMultipleEnabledIMEsOrSubtypes) {
                 drawKeyPopupHint(key, canvas, paint, params);
             }
+        } else if (code == Constants.CODE_LANGUAGE_SWITCH) {
+            drawKeyPopupHint(key, canvas, paint, params);
         }
     }
 

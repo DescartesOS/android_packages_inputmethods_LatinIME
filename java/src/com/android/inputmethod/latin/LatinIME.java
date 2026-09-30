@@ -83,6 +83,7 @@ import com.android.inputmethod.keyboard.Keyboard;
 import com.android.inputmethod.keyboard.KeyboardActionListener;
 import com.android.inputmethod.keyboard.KeyboardId;
 import com.android.inputmethod.keyboard.KeyboardSwitcher;
+import com.android.inputmethod.keyboard.KeyboardTheme;
 import com.android.inputmethod.keyboard.MainKeyboardView;
 import com.android.inputmethod.latin.Suggest.OnGetSuggestedWordsCallback;
 import com.android.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
@@ -92,6 +93,7 @@ import com.android.inputmethod.latin.common.Constants;
 import com.android.inputmethod.latin.common.CoordinateUtils;
 import com.android.inputmethod.latin.common.InputPointers;
 import com.android.inputmethod.latin.define.DebugFlags;
+import com.android.inputmethod.latin.glass.GlassWindow;
 import com.android.inputmethod.latin.define.ProductionFlags;
 import com.android.inputmethod.latin.inputlogic.InputLogic;
 import com.android.inputmethod.latin.permissions.PermissionsManager;
@@ -106,6 +108,7 @@ import com.android.inputmethod.latin.utils.ApplicationUtils;
 import com.android.inputmethod.latin.utils.DialogUtils;
 import com.android.inputmethod.latin.utils.ImportantNoticeUtils;
 import com.android.inputmethod.latin.utils.IntentUtils;
+import com.android.inputmethod.latin.utils.Fonts;
 import com.android.inputmethod.latin.utils.JniUtils;
 import com.android.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import com.android.inputmethod.latin.utils.StatsUtils;
@@ -176,6 +179,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
+    private GlassWindow mGlassWindow;
+    private final int[] mTmpLocation = new int[2];
     private InsetsUpdater mInsetsUpdater;
     private final Rect mFloatingPanelRect = new Rect();
     private SuggestionStripView mSuggestionStripView;
@@ -627,7 +632,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final WindowManager wm = getSystemService(WindowManager.class);
         mDisplayContext = getDisplayContext();
         KeyboardSwitcher.init(this);
+        Fonts.init(this);
+        setTheme(R.style.PenguinImeWindow);
         super.onCreate();
+        mGlassWindow = new GlassWindow(this, getWindow().getWindow());
+        updateGlassWindow();
 
         mHandler.onCreate();
         mClipboardSuggestionMonitor = new ClipboardSuggestionMonitor(this, this);
@@ -790,8 +799,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 this /* DictionaryInitializationListener */);
     }
 
+    private void updateGlassWindow() {
+        if (mGlassWindow != null) {
+            mGlassWindow.setEnabled(KeyboardTheme.isGlass(this));
+        }
+    }
+
     @Override
     public void onDestroy() {
+        if (mGlassWindow != null) {
+            mGlassWindow.release();
+        }
         mDictionaryFacilitator.closeDictionaries();
         mSettings.onDestroy();
         unregisterReceiver(mHideSoftInputReceiver);
@@ -840,6 +858,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             }
         }
         super.onConfigurationChanged(conf);
+        updateGlassWindow();
     }
 
     @Override
@@ -1158,7 +1177,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     @Override
     public void onWindowShown() {
         super.onWindowShown();
+        updateGlassWindow();
         updateNavigationBarColor();
+        final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
+        if (mainKeyboardView != null) {
+            mainKeyboardView.onWindowShown();
+        }
     }
 
     @Override
@@ -1167,6 +1191,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final MainKeyboardView mainKeyboardView = mKeyboardSwitcher.getMainKeyboardView();
         if (mainKeyboardView != null) {
             mainKeyboardView.closing();
+            mainKeyboardView.onWindowHidden();
         }
     }
 
@@ -1326,33 +1351,11 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             mInsetsUpdater.setInsets(outInsets);
             return;
         }
-        if (mKeyboardSwitcher.isFloatingKeyboard()) {
-            outInsets.contentTopInsets = inputHeight;
-            outInsets.visibleTopInsets = inputHeight;
-            outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
-            if (mKeyboardSwitcher.isShowingMoreKeysPanel()) {
-                outInsets.touchableRegion.set(0, 0, mInputView.getWidth(), inputHeight);
-            } else {
-                mKeyboardSwitcher.getFloatingPanelRect(mFloatingPanelRect);
-                outInsets.touchableRegion.set(mFloatingPanelRect);
-            }
-            mInsetsUpdater.setInsets(outInsets);
-            return;
-        }
-        final int suggestionsHeight = (!mKeyboardSwitcher.isShowingEmojiPalettes()
-                && mSuggestionStripView.getVisibility() == View.VISIBLE)
-                ? mSuggestionStripView.getHeight() : 0;
-        final int visibleTopY = inputHeight - visibleKeyboardView.getHeight() - suggestionsHeight;
-        mSuggestionStripView.setMoreSuggestionsHeight(visibleTopY);
-        // Need to set expanded touchable region only if a keyboard view is being shown.
-        if (visibleKeyboardView.isShown()) {
-            final int touchLeft = 0;
-            final int touchTop = mKeyboardSwitcher.isShowingMoreKeysPanel() ? 0 : visibleTopY;
-            final int touchRight = visibleKeyboardView.getWidth();
-            final int touchBottom = inputHeight;
-            outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_REGION;
-            outInsets.touchableRegion.set(touchLeft, touchTop, touchRight, touchBottom);
-        }
+        mInputView.getLocationInWindow(mTmpLocation);
+        final int visibleTopY = mTmpLocation[1];
+        mSuggestionStripView.getLocationOnScreen(mTmpLocation);
+        mSuggestionStripView.setMoreSuggestionsHeight(mTmpLocation[1]);
+        outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_FRAME;
         outInsets.contentTopInsets = visibleTopY;
         outInsets.visibleTopInsets = visibleTopY;
         mInsetsUpdater.setInsets(outInsets);
@@ -1391,6 +1394,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     @Override
     public boolean onEvaluateFullscreenMode() {
+        if (KeyboardTheme.isGlass(this)) {
+            return false;
+        }
         final SettingsValues settingsValues = mSettings.getCurrent();
         if (isImeSuppressedByHardwareKeyboard()) {
             // If there is a hardware keyboard, disable full screen mode.
@@ -1419,25 +1425,15 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     private void updateSoftInputWindowLayoutParameters() {
-        // Override layout parameters to expand {@link SoftInputWindow} to the entire screen.
-        // See {@link InputMethodService#setinputView(View)} and
-        // {@link SoftInputWindow#updateWidthHeight(WindowManager.LayoutParams)}.
         final Window window = getWindow().getWindow();
-        ViewLayoutUtils.updateLayoutHeightOf(window, LayoutParams.MATCH_PARENT);
+        ViewLayoutUtils.updateLayoutHeightOf(window,
+                isFullscreenMode() ? LayoutParams.MATCH_PARENT : LayoutParams.WRAP_CONTENT);
         // This method may be called before {@link #setInputView(View)}.
         if (mInputView != null) {
-            // In non-fullscreen mode, {@link InputView} and its parent inputArea should expand to
-            // the entire screen and be placed at the bottom of {@link SoftInputWindow}.
-            // In fullscreen mode, these shouldn't expand to the entire screen and should be
-            // coexistent with {@link #mExtractedArea} above.
-            // See {@link InputMethodService#setInputView(View) and
-            // com.android.internal.R.layout.input_method.xml.
-            final int layoutHeight = isFullscreenMode()
-                    ? LayoutParams.WRAP_CONTENT : LayoutParams.MATCH_PARENT;
             final View inputArea = window.findViewById(android.R.id.inputArea);
-            ViewLayoutUtils.updateLayoutHeightOf(inputArea, layoutHeight);
+            ViewLayoutUtils.updateLayoutHeightOf(inputArea, LayoutParams.WRAP_CONTENT);
             ViewLayoutUtils.updateLayoutGravityOf(inputArea, Gravity.BOTTOM);
-            ViewLayoutUtils.updateLayoutHeightOf(mInputView, layoutHeight);
+            ViewLayoutUtils.updateLayoutHeightOf(mInputView, LayoutParams.WRAP_CONTENT);
         }
     }
 
