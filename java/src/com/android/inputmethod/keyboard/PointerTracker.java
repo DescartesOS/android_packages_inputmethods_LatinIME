@@ -31,7 +31,6 @@ import com.android.inputmethod.keyboard.internal.GestureStrokeDrawingParams;
 import com.android.inputmethod.keyboard.internal.GestureStrokeDrawingPoints;
 import com.android.inputmethod.keyboard.internal.GestureStrokeRecognitionParams;
 import com.android.inputmethod.keyboard.internal.PointerTrackerQueue;
-import com.android.inputmethod.keyboard.internal.SwipeDownDigitDetector;
 import com.android.inputmethod.keyboard.internal.TimerProxy;
 import com.android.inputmethod.keyboard.internal.TypingTimeRecorder;
 import com.android.inputmethod.latin.R;
@@ -39,6 +38,7 @@ import com.android.inputmethod.latin.common.Constants;
 import com.android.inputmethod.latin.common.CoordinateUtils;
 import com.android.inputmethod.latin.common.InputPointers;
 import com.android.inputmethod.latin.define.DebugFlags;
+import com.android.inputmethod.latin.gesture.GestureDecoder;
 import com.android.inputmethod.latin.settings.Settings;
 import com.android.inputmethod.latin.utils.ResourceUtils;
 
@@ -110,7 +110,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
     private Keyboard mKeyboard;
     private int mPhantomSuddenMoveThreshold;
     private final BogusMoveEventDetector mBogusMoveEventDetector = new BogusMoveEventDetector();
-    private final SwipeDownDigitDetector mSwipeDownDigitDetector = new SwipeDownDigitDetector();
 
     private boolean mIsDetectingGesture = false; // per PointerTracker.
     private static boolean sInGesture = false;
@@ -229,6 +228,8 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             tracker.setKeyDetectorInner(keyDetector);
         }
         sGestureEnabler.setPasswordMode(keyboard.mId.passwordInput());
+        GestureDecoder.setInputCoordinateCorrection(
+                keyDetector.getTouchX(0), keyDetector.getTouchY(0));
     }
 
     public static void setReleasedKeyGraphicsToAllKeys() {
@@ -311,8 +312,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
                 sListener.onTextInput(key.getOutputText());
             } else if (code != Constants.CODE_UNSPECIFIED) {
                 if (mKeyboard.hasProximityCharsCorrection(code)) {
-                    sListener.onCodeInput(code, x + mKeyboard.getSplitDuplicateOffsetX(key), y,
-                            isKeyRepeat);
+                    sListener.onCodeInput(code, x, y, isKeyRepeat);
                 } else {
                     sListener.onCodeInput(code,
                             Constants.NOT_A_COORDINATE, Constants.NOT_A_COORDINATE, isKeyRepeat);
@@ -378,7 +378,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         // {@link onMoveEventInternal(int,int,long)} or {@link #onUpEventInternal(int,int,long)}.
         mPhantomSuddenMoveThreshold = (int)(keyWidth * PHANTOM_SUDDEN_MOVE_THRESHOLD);
         mBogusMoveEventDetector.setKeyboardGeometry(keyWidth, keyHeight);
-        mSwipeDownDigitDetector.setKeyHeight(keyHeight - mKeyboard.mVerticalGap);
     }
 
     @Override
@@ -719,9 +718,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             mStartY = y;
             mStartTime = System.currentTimeMillis();
         }
-        final boolean isSwipeDownForDigitsEnabled =
-                Settings.getInstance().getCurrent().mSwipeDownForDigitsEnabled;
-        mSwipeDownDigitDetector.onDownEvent(isSwipeDownForDigitsEnabled ? key : null, x, y);
     }
 
     private void startKeySelectionByDraggingFinger(final Key key) {
@@ -757,7 +753,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             return;
         }
         if (!sInGesture && key != null && Character.isLetter(key.getCode())
-                && !mSwipeDownDigitDetector.isSwipingDown(key, x, y)
                 && mBatchInputArbiter.mayStartBatchInput(this)) {
             sInGesture = true;
         }
@@ -925,35 +920,33 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         final Key oldKey = mCurrentKey;
         final Key newKey = onMoveKey(x, y);
 
-        // Cursor space bar slider
         if (oldKey != null && oldKey.getCode() == Constants.CODE_SPACE
                 && Settings.getInstance().getCurrent().mSpaceTrackpadEnabled) {
-            int steps = (x - mStartX) / sPointerStep;
-            if (steps != 0
-                    && mStartTime + Settings.getInstance().getCurrent().mKeyLongpressTimeout
-                        < System.currentTimeMillis()) {
+            if (!mSlidOnSpaceBar && shouldStartSlider(x, y, sPointerStep)) {
                 mSlidOnSpaceBar = true;
+                sTimerProxy.cancelKeyTimersOf(this);
+            }
+            final int steps = (x - mStartX) / sPointerStep;
+            if (mSlidOnSpaceBar && steps != 0) {
                 mStartX += steps * sPointerStep;
                 sListener.onMovePointer(steps);
             }
             return;
         }
 
-        // Backspace slider
         if (oldKey != null && oldKey.getCode() == Constants.CODE_DELETE
                 && Settings.getInstance().getCurrent().mBackspaceTrackpadEnabled) {
-            int steps = (x - mStartX) / sPointerWordStep;
-            if (steps != 0
-                    && mStartTime + Settings.getInstance().getCurrent().mKeyLongpressTimeout
-                    < System.currentTimeMillis()) {
+            if (!mSlidOnBackspace && shouldStartSlider(x, y, sPointerWordStep)) {
                 mSlidOnBackspace = true;
+                sTimerProxy.cancelKeyTimersOf(this);
+            }
+            final int steps = (x - mStartX) / sPointerWordStep;
+            if (mSlidOnBackspace && steps != 0) {
                 mStartX += steps * sPointerWordStep;
                 sListener.onBackspaceSlide(steps);
             }
             return;
         }
-
-        mSwipeDownDigitDetector.onMoveEvent(newKey, x, y);
 
         if (sGestureEnabler.shouldHandleGesture()) {
             // Register move event on gesture tracker.
@@ -961,13 +954,6 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             if (sInGesture) {
                 mCurrentKey = null;
                 setReleasedKeyGraphics(oldKey, true /* withAnimation */);
-                return;
-            }
-        }
-
-        if (oldKey != null) {
-            updateSwipeDownDigit(oldKey, x, y);
-            if (mSwipeDownDigitDetector.isSwipingDown(oldKey, x, y)) {
                 return;
             }
         }
@@ -990,13 +976,14 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
         }
     }
 
-    private void updateSwipeDownDigit(@Nonnull final Key key, final int x, final int y) {
-        if (mSwipeDownDigitDetector.hasSwipedDown(key, x, y)) {
-            sTimerProxy.cancelLongPressTimersOf(this);
-            sDrawingProxy.showSwipeDownDigit(key);
-        } else {
-            sDrawingProxy.dismissSwipeDownDigit(key);
+    private boolean shouldStartSlider(final int x, final int y, final int step) {
+        final int dx = Math.abs(x - mStartX);
+        final int dy = Math.abs(y - mStartY);
+        if (dx >= step * 2 && dx > dy * 2) {
+            return true;
         }
+        return dx >= step && mStartTime + Settings.getInstance().getCurrent().mKeyLongpressTimeout
+                < System.currentTimeMillis();
     }
 
     private void onUpEvent(final int x, final int y, final long eventTime) {
@@ -1083,12 +1070,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
                 && (currentKey.getCode() == currentRepeatingKeyCode) && !isInDraggingFinger) {
             return;
         }
-        if (mSwipeDownDigitDetector.hasSwipedDown(currentKey, x, y)) {
-            sendKeyCode(currentKey, SwipeDownDigitDetector.getDigitCode(currentKey),
-                    mKeyX, mKeyY, eventTime);
-        } else {
-            detectAndSendKey(currentKey, mKeyX, mKeyY, eventTime);
-        }
+        detectAndSendKey(currentKey, mKeyX, mKeyY, eventTime);
         if (isInSlidingKeyInput) {
             callListenerOnFinishSlidingInput();
         }
@@ -1131,7 +1113,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             return;
         }
         final int code = key.getCode();
-        if (code == Constants.CODE_SPACE) {
+        if (code == Constants.CODE_SPACE || code == Constants.CODE_LANGUAGE_SWITCH) {
             // Long pressing the space key invokes IME switcher dialog.
             if (sListener.onCustomRequest(Constants.CUSTOM_CODE_SHOW_INPUT_METHOD_PICKER)) {
                 cancelKeyTracking();
@@ -1256,11 +1238,7 @@ public final class PointerTracker implements PointerTrackerQueue.Element,
             return;
         }
 
-        sendKeyCode(key, key.getCode(), x, y, eventTime);
-    }
-
-    private void sendKeyCode(final Key key, final int code, final int x, final int y,
-            final long eventTime) {
+        final int code = key.getCode();
         callListenerOnCodeInput(key, code, x, y, eventTime, false /* isKeyRepeat */);
         callListenerOnRelease(key, code, false /* withSliding */);
     }

@@ -41,6 +41,8 @@ import com.android.inputmethod.latin.LatinIME;
 import com.android.inputmethod.latin.R;
 import com.android.inputmethod.latin.RichInputMethodManager;
 import com.android.inputmethod.latin.WordComposer;
+import com.android.inputmethod.latin.define.ProductionFlags;
+import com.android.inputmethod.latin.glass.GlassPanels;
 import com.android.inputmethod.latin.settings.Settings;
 import com.android.inputmethod.latin.settings.SettingsValues;
 import com.android.inputmethod.latin.suggestions.SuggestionStripView;
@@ -130,30 +132,12 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
         final KeyboardLayoutSet.Builder builder = new KeyboardLayoutSet.Builder(
                 mThemeContext, editorInfo);
         final Resources res = mThemeContext.getResources();
-        final boolean isFloating = settingsValues.mIsFloatingKeyboardEnabled;
-        final boolean isSplitLayout = !isFloating && settingsValues.mIsSplitKeyboardEnabled
-                && SplitKeyboardUtils.isSplitKeyboardAvailable(res);
-        final int screenWidth = ResourceUtils.getDefaultKeyboardWidth(mThemeContext);
-        final int keyboardWidth;
-        final int keyboardHeight;
-        if (isFloating) {
-            final float density = res.getDisplayMetrics().density;
-            final SharedPreferences prefs =
-                    PreferenceManager.getDefaultSharedPreferences(mLatinIME);
-            final boolean isLandscape =
-                    res.getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
-            keyboardWidth = FloatingKeyboardUtils.loadPanelWidth(
-                    prefs, isLandscape, screenWidth, density)
-                    - 2 * FloatingKeyboardUtils.dpToPx(
-                            FloatingKeyboardUtils.PANEL_PADDING_DP, density);
-            keyboardHeight = FloatingKeyboardUtils.loadKeyboardHeight(prefs, isLandscape,
-                    keyboardWidth, res.getDisplayMetrics().heightPixels, density);
-        } else {
-            final int height = ResourceUtils.getKeyboardHeight(res, settingsValues);
-            keyboardWidth = screenWidth;
-            keyboardHeight = SplitKeyboardUtils.isSplitKeyboardAvailable(res)
-                    ? SplitKeyboardUtils.getSplitKeyboardHeight(height) : height;
+        int keyboardWidth = ResourceUtils.getDefaultKeyboardWidth(mThemeContext);
+        if (settingsValues.mOneHandedMode != Settings.ONE_HANDED_OFF
+                && res.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
+            keyboardWidth = Math.round(keyboardWidth * GlassPanels.ONE_HANDED_WIDTH_RATIO);
         }
+        final int keyboardHeight = ResourceUtils.getKeyboardHeight(res, settingsValues);
         builder.setKeyboardGeometry(keyboardWidth, keyboardHeight);
         builder.setSubtype(mRichImm.getCurrentSubtype());
         builder.setVoiceInputKeyEnabled(settingsValues.mShowsVoiceInputKey);
