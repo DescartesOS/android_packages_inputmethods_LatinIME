@@ -16,7 +16,7 @@
 
 <PreferenceScreen
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:latin="http://schemas.android.com/apk/res/com.android.inputmethod.latin"
+    xmlns:latin="http://schemas.android.com/apk/res-auto"
     android:title="@string/settings_screen_accounts">
 
     <!-- This preference is a fake view of the underlying preference.
@@ -30,7 +30,7 @@
         android:enabled="false" />
 
     <!-- Summary will be set programmatically to reflect the account status -->
-    <SwitchPreferenceCompat
+    <CheckBoxPreference
         android:key="pref_enable_cloud_sync"
         android:title="@string/cloud_sync_title"
         android:defaultValue="false"
@@ -52,7 +52,7 @@
         android:dependency="pref_enable_cloud_sync" />
 
     <!-- Title will be set programmatically to embed application name -->
-    <SwitchPreferenceCompat
+    <CheckBoxPreference
         android:key="pref_enable_metrics_logging"
         android:summary="@string/enable_metrics_logging_summary"
         android:defaultValue="true"
