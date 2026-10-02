@@ -831,6 +831,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             requestHideSelf(0);
         } else if (viewId == R.id.glass_toolbar_settings) {
             launchSettings(SettingsActivity.EXTRA_ENTRY_VALUE_LONG_PRESS_COMMA);
+        } else if (viewId == R.id.glass_toolbar_theme) {
+            launchThemeSettings();
         } else if (viewId == R.id.glass_toolbar_clipboard) {
             mGlassPanels.togglePanel(GlassPanels.PANEL_CLIPBOARD);
         } else if (viewId == R.id.glass_toolbar_edit) {
@@ -972,6 +974,38 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         @Override
         public void commitText(final String text) {
             onTextInput(text);
+        }
+
+        @Override
+        public void commitImage(final java.io.File file, final String mimeType) {
+            final InputConnection ic = getCurrentInputConnection();
+            final EditorInfo editorInfo = getCurrentInputEditorInfo();
+            if (ic == null || editorInfo == null || file == null) return;
+            boolean accepted = false;
+            final String[] accepts = editorInfo.contentMimeTypes;
+            if (accepts != null) {
+                for (final String accept : accepts) {
+                    if (android.content.ClipDescription.compareMimeTypes(mimeType, accept)) {
+                        accepted = true;
+                        break;
+                    }
+                }
+            }
+            if (!accepted) {
+                android.widget.Toast.makeText(LatinIME.this,
+                        R.string.glass_clipboard_image_unsupported,
+                        android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
+            final android.view.inputmethod.InputContentInfo info =
+                    new android.view.inputmethod.InputContentInfo(
+                            com.android.inputmethod.latin.glass.ClipImageProvider.uriFor(
+                                    LatinIME.this, file.getName()),
+                            new android.content.ClipDescription(
+                                    getString(R.string.glass_clipboard_image),
+                                    new String[] { mimeType }));
+            ic.commitContent(info, InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION, null);
         }
 
         @Override
@@ -1387,6 +1421,10 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         updateClipChip();
         updateBottomBar();
+        if (hasSuggestionStripView()) {
+            mSuggestionStripView.setIncognito(
+                    currentSettingsValues.mInputAttributes.mNoPersonalizedLearning);
+        }
         if (mGlassPanels != null) {
             mGlassPanels.applyOneHandedMode(isOneHandedAvailable()
                     ? currentSettingsValues.mOneHandedMode : Settings.ONE_HANDED_OFF);
@@ -2264,6 +2302,20 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
         startActivity(intent,
                 ActivityOptions.makeBasic().setLaunchDisplayId(currentDisplayId).toBundle());
+    }
+
+    void launchThemeSettings() {
+        mInputLogic.commitTyped(mSettings.getCurrent(), LastComposedWord.NOT_A_SEPARATOR);
+        requestHideSelf(0);
+        final Intent intent = new Intent();
+        intent.setClass(LatinIME.this, SettingsActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.putExtra(android.preference.PreferenceActivity.EXTRA_SHOW_FRAGMENT,
+                com.android.inputmethod.latin.settings.ThemeSettingsFragment.class.getName());
+        intent.putExtra(SettingsActivity.EXTRA_SHOW_HOME_AS_UP, true);
+        startActivityOnTheSameDisplay(intent);
     }
 
     void launchSettings(final String extraEntryValue) {
