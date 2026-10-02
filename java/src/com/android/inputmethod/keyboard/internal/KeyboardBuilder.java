@@ -665,6 +665,11 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                     R.styleable.Keyboard_Case_hasShortcutKey, id.mHasShortcutKey);
             final boolean numberRowEnabledMatched = matchBoolean(caseAttr,
                     R.styleable.Keyboard_Case_numberRowEnabled, id.mNumberRowEnabled);
+            final boolean punctuationKeysEnabledMatched = matchBoolean(caseAttr,
+                    R.styleable.Keyboard_Case_punctuationKeysEnabled, id.mPunctuationKeysEnabled);
+            final boolean languageSwitchKeyEnabledMatched = matchBoolean(caseAttr,
+                    R.styleable.Keyboard_Case_languageSwitchKeyEnabled,
+                    id.mLanguageSwitchKeyEnabled);
             final boolean emojiKeyEnabledMatched = matchBoolean(caseAttr,
                     R.styleable.Keyboard_Case_emojiKeyEnabled,
                     id.mEmojiKeyEnabled);
@@ -684,7 +689,8 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                     && keyboardThemeMacthed && modeMatched && navigateNextMatched
                     && navigatePreviousMatched && passwordInputMatched && clobberSettingsKeyMatched
                     && hasShortcutKeyMatched  && numberRowEnabledMatched
-                     && emojiKeyEnabledMatched
+                    && punctuationKeysEnabledMatched
+                    && languageSwitchKeyEnabledMatched && emojiKeyEnabledMatched
                     && isMultiLineMatched && imeActionMatched && isIconDefinedMatched
                     && localeCodeMatched && languageCodeMatched && countryCodeMatched
                     && splitLayoutMatched;
@@ -713,6 +719,8 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
                                 "hasShortcutKey"),
                         booleanAttr(caseAttr, R.styleable.Keyboard_Case_numberRowEnabled,
                                 "numberRowEnabled"),
+                        booleanAttr(caseAttr, R.styleable.Keyboard_Case_languageSwitchKeyEnabled,
+                                "languageSwitchKeyEnabled"),
                         booleanAttr(caseAttr, R.styleable.Keyboard_Case_emojiKeyEnabled,
                                 "emojiKeyEnabled"),
                         booleanAttr(caseAttr, R.styleable.Keyboard_Case_isMultiLine,
@@ -870,9 +878,6 @@ public class KeyboardBuilder<KP extends KeyboardParams> {
     }
 
     private void endKeyboard() {
-        if (mParams.mId.mIsSplitLayout) {
-            mParams.applySplitLayout(mParams.mId.mIsSplitDuplicateKeys);
-        }
         mParams.removeRedundantMoreKeys();
         // {@link #parseGridRows(XmlPullParser,boolean)} may populate keyboard rows higher than
         // previously expected.

@@ -42,7 +42,6 @@ import com.android.inputmethod.latin.RichInputMethodSubtype;
 import com.android.inputmethod.latin.define.DebugFlags;
 import com.android.inputmethod.latin.utils.InputTypeUtils;
 import com.android.inputmethod.latin.utils.ScriptUtils;
-import com.android.inputmethod.latin.utils.SplitKeyboardUtils;
 import com.android.inputmethod.latin.utils.SubtypeLocaleUtils;
 import com.android.inputmethod.latin.utils.XmlParseUtils;
 
@@ -74,7 +73,6 @@ public final class KeyboardLayoutSet {
     private static final String KEYBOARD_LAYOUT_SET_RESOURCE_PREFIX = "keyboard_layout_set_";
 
     private final Context mContext;
-    private Context mPhoneLayoutContext;
     @Nonnull
     private final Params mParams;
 
@@ -122,6 +120,8 @@ public final class KeyboardLayoutSet {
         boolean mNoSettingsKey;
         boolean mNumberRowEnabled;
         boolean mNumberRowPasswordEnabled; // implied if mNumberRowEnabled
+        boolean mPunctuationKeysEnabled;
+        boolean mLanguageSwitchKeyEnabled;
         boolean mEmojiKeyEnabled;
         RichInputMethodSubtype mSubtype;
         boolean mIsSpellChecker;
@@ -134,8 +134,6 @@ public final class KeyboardLayoutSet {
         // Indicates if split layout is actually enabled, taking into account
         // whether the user has enabled it, and the keyboard layout supports it.
         boolean mIsSplitLayoutEnabled;
-        boolean mSplitDuplicateKeysEnabled;
-        boolean mIsFloating;
         // Sparse array of KeyboardLayoutSet element parameters indexed by element's id.
         final SparseArray<ElementParams> mKeyboardLayoutSetElementIdToParamsMap =
                 new SparseArray<>();
@@ -204,8 +202,7 @@ public final class KeyboardLayoutSet {
         // The KeyboardId is an internal key for a Keyboard object.
 
         mParams.mIsSplitLayoutEnabled = mParams.mIsSplitLayoutEnabledByUser
-                && !mParams.mIsFloating
-                && keyboardLayoutSetElementId <= KeyboardId.ELEMENT_SYMBOLS_SHIFTED;
+                && elementParams.mSupportsSplitLayout;
         final KeyboardId id = new KeyboardId(keyboardLayoutSetElementId, mParams);
         try {
             return getKeyboard(elementParams, id);
@@ -213,13 +210,6 @@ public final class KeyboardLayoutSet {
             Log.e(TAG, "Can't create keyboard: " + id, e);
             throw new KeyboardLayoutSetException(e, id);
         }
-    }
-
-    private Context getPhoneLayoutContext() {
-        if (mPhoneLayoutContext == null) {
-            mPhoneLayoutContext = SplitKeyboardUtils.createPhoneLayoutContext(mContext);
-        }
-        return mPhoneLayoutContext;
     }
 
     @Nonnull
@@ -233,10 +223,8 @@ public final class KeyboardLayoutSet {
             return cachedKeyboard;
         }
 
-        final Context context =
-                (id.mIsSplitLayout || id.mIsFloating) ? getPhoneLayoutContext() : mContext;
         final KeyboardBuilder<KeyboardParams> builder =
-                new KeyboardBuilder<>(context, new KeyboardParams(sUniqueKeysCache));
+                new KeyboardBuilder<>(mContext, new KeyboardParams(sUniqueKeysCache));
         sUniqueKeysCache.setEnabled(id.isAlphabetKeyboard());
         builder.setAllowRedundantMoreKes(elementParams.mAllowRedundantMoreKeys);
         final int keyboardXmlId = elementParams.mKeyboardXmlId;
@@ -338,6 +326,11 @@ public final class KeyboardLayoutSet {
             return this;
         }
 
+        public Builder setPunctuationKeysEnabled(final boolean enabled) {
+            mParams.mPunctuationKeysEnabled = enabled;
+            return this;
+        }
+
         public Builder setNumberRowEnabled(final boolean enabled) {
             mParams.mNumberRowEnabled = enabled;
             return this;
@@ -345,6 +338,11 @@ public final class KeyboardLayoutSet {
 
         public Builder setNumberRowPasswordEnabled(final boolean enabled) {
             mParams.mNumberRowPasswordEnabled = enabled;
+            return this;
+        }
+
+        public Builder setLanguageSwitchKeyEnabled(final boolean enabled) {
+            mParams.mLanguageSwitchKeyEnabled = enabled;
             return this;
         }
 
@@ -360,16 +358,6 @@ public final class KeyboardLayoutSet {
 
         public Builder setSplitLayoutEnabledByUser(final boolean enabled) {
             mParams.mIsSplitLayoutEnabledByUser = enabled;
-            return this;
-        }
-
-        public Builder setSplitDuplicateKeysEnabled(final boolean enabled) {
-            mParams.mSplitDuplicateKeysEnabled = enabled;
-            return this;
-        }
-
-        public Builder setFloatingKeyboard(final boolean floating) {
-            mParams.mIsFloating = floating;
             return this;
         }
 

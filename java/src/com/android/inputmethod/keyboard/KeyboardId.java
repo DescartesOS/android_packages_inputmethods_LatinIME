@@ -79,12 +79,12 @@ public final class KeyboardId {
     public final EditorInfo mEditorInfo;
     public final boolean mClobberSettingsKey;
     public final boolean mNumberRowEnabled;
+    public final boolean mPunctuationKeysEnabled;
+    public final boolean mLanguageSwitchKeyEnabled;
     public final boolean mEmojiKeyEnabled;
     public final String mCustomActionLabel;
     public final boolean mHasShortcutKey;
     public final boolean mIsSplitLayout;
-    public final boolean mIsSplitDuplicateKeys;
-    public final boolean mIsFloating;
 
     private final int mHashCode;
 
@@ -98,13 +98,13 @@ public final class KeyboardId {
         mClobberSettingsKey = params.mNoSettingsKey;
         mNumberRowEnabled = params.mNumberRowEnabled ||
                 (params.mNumberRowPasswordEnabled && params.mIsPasswordField);
+        mPunctuationKeysEnabled = params.mPunctuationKeysEnabled;
+        mLanguageSwitchKeyEnabled = params.mLanguageSwitchKeyEnabled;
         mEmojiKeyEnabled = params.mEmojiKeyEnabled;
         mCustomActionLabel = (mEditorInfo.actionLabel != null)
                 ? mEditorInfo.actionLabel.toString() : null;
         mHasShortcutKey = params.mVoiceInputKeyEnabled;
         mIsSplitLayout = params.mIsSplitLayoutEnabled;
-        mIsSplitDuplicateKeys = mIsSplitLayout && params.mSplitDuplicateKeysEnabled;
-        mIsFloating = params.mIsFloating;
 
         mHashCode = computeHashCode(this);
     }
@@ -118,7 +118,9 @@ public final class KeyboardId {
                 id.passwordInput(),
                 id.mClobberSettingsKey,
                 id.mNumberRowEnabled,
+                id.mPunctuationKeysEnabled,
                 id.mHasShortcutKey,
+                id.mLanguageSwitchKeyEnabled,
                 id.mEmojiKeyEnabled,
                 id.isMultiLine(),
                 id.imeAction(),
@@ -126,9 +128,7 @@ public final class KeyboardId {
                 id.navigateNext(),
                 id.navigatePrevious(),
                 id.mSubtype,
-                id.mIsSplitLayout,
-                id.mIsSplitDuplicateKeys,
-                id.mIsFloating
+                id.mIsSplitLayout
         });
     }
 
@@ -142,7 +142,9 @@ public final class KeyboardId {
                 && other.passwordInput() == passwordInput()
                 && other.mClobberSettingsKey == mClobberSettingsKey
                 && other.mNumberRowEnabled == mNumberRowEnabled
+                && other.mPunctuationKeysEnabled == mPunctuationKeysEnabled
                 && other.mHasShortcutKey == mHasShortcutKey
+                && other.mLanguageSwitchKeyEnabled == mLanguageSwitchKeyEnabled
                 && other.mEmojiKeyEnabled == mEmojiKeyEnabled
                 && other.isMultiLine() == isMultiLine()
                 && other.imeAction() == imeAction()
@@ -150,9 +152,7 @@ public final class KeyboardId {
                 && other.navigateNext() == navigateNext()
                 && other.navigatePrevious() == navigatePrevious()
                 && other.mSubtype.equals(mSubtype)
-                && other.mIsSplitLayout == mIsSplitLayout
-                && other.mIsSplitDuplicateKeys == mIsSplitDuplicateKeys
-                && other.mIsFloating == mIsFloating;
+                && other.mIsSplitLayout == mIsSplitLayout;
     }
 
     private static boolean isAlphabetKeyboard(final int elementId) {
@@ -203,7 +203,7 @@ public final class KeyboardId {
 
     @Override
     public String toString() {
-        return String.format(Locale.ROOT, "[%s %s:%s %dx%d %s %s%s%s%s%s%s%s%s%s%s%s%s%s]",
+        return String.format(Locale.ROOT, "[%s %s:%s %dx%d %s %s%s%s%s%s%s%s%s%s]",
                 elementIdToName(mElementId),
                 mSubtype.getLocale(),
                 mSubtype.getExtraValueOf(KEYBOARD_LAYOUT_SET),
@@ -216,11 +216,10 @@ public final class KeyboardId {
                 (mNumberRowEnabled ? " numberRowEnabled" : ""),
                 (passwordInput() ? " passwordInput" : ""),
                 (mHasShortcutKey ? " hasShortcutKey" : ""),
+                (mLanguageSwitchKeyEnabled ? " languageSwitchKeyEnabled" : ""),
                 (mEmojiKeyEnabled ? " emojiKeyEnabled" : ""),
                 (isMultiLine() ? " isMultiLine" : ""),
-                (mIsSplitLayout ? " isSplitLayout" : ""),
-                (mIsSplitDuplicateKeys ? " isSplitDuplicateKeys" : ""),
-                (mIsFloating ? " isFloating" : "")
+                (mIsSplitLayout ? " isSplitLayout" : "")
         );
     }
 
