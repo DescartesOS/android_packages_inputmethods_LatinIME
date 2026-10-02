@@ -59,7 +59,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "java/proguard.flags")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "java/proguard.flags",
+                "proguard-gradle.pro")
             signingConfig = signingConfigs.findByName("penguin") ?: signingConfigs.getByName("debug")
         }
         debug {
@@ -73,6 +74,9 @@ android {
             java.directories.run { clear(); add("common/src"); add("java/src") }
             res.directories.run { clear(); add("java/res") }
             assets.directories.run { clear(); add("java/assets") }
+        }
+        getByName("test") {
+            java.directories.run { clear(); add("tests/jvm") }
         }
     }
 
@@ -119,4 +123,6 @@ dependencies {
     implementation("androidx.preference:preference:1.2.1")
     implementation("androidx.dynamicanimation:dynamicanimation:1.1.0")
     implementation("com.google.android.material:material:1.14.0")
+
+    testImplementation("junit:junit:4.13.2")
 }
