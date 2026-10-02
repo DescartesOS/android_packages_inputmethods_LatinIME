@@ -180,7 +180,7 @@ public class LayoutCustomizer extends AbstractLayoutBase {
      *         keyboard.
      */
     public ExpectedKey[] getSpaceKeys(final boolean isPhone) {
-        return joinKeys(SPACE_KEY);
+        return joinKeys(LANGUAGE_SWITCH_KEY, SPACE_KEY);
     }
 
     /**
