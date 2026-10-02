@@ -45,6 +45,7 @@ import com.android.inputmethod.latin.Suggest.OnGetSuggestedWordsCallback;
 import com.android.inputmethod.latin.SuggestedWords;
 import com.android.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
 import com.android.inputmethod.latin.WordComposer;
+import com.android.inputmethod.latin.emoji.EmojiSuggestions;
 import com.android.inputmethod.latin.common.Constants;
 import com.android.inputmethod.latin.common.InputPointers;
 import com.android.inputmethod.latin.common.StringUtils;
@@ -505,6 +506,7 @@ public final class InputLogic {
     public void onStartBatchInput(final SettingsValues settingsValues,
             final KeyboardSwitcher keyboardSwitcher, final LatinIME.UIHandler handler) {
         mWordBeingCorrectedByCursor = null;
+        mSuggest.prepareGestureDecoder(keyboardSwitcher.getKeyboard());
         mInputLogicHandler.onStartBatchInput();
         handler.showGesturePreviewAndSuggestionStrip(
                 SuggestedWords.getEmptyInstance(), false /* dismissGestureFloatingPreviewText */);
@@ -695,6 +697,9 @@ public final class InputLogic {
                 break;
             case Constants.CODE_ACTION_PREVIOUS:
                 performEditorAction(EditorInfo.IME_ACTION_PREVIOUS);
+                break;
+            case Constants.CODE_LANGUAGE_SWITCH:
+                handleLanguageSwitchKey();
                 break;
             case Constants.CODE_EMOJI:
                 // Note: Switching emoji keyboard is being handled in
@@ -1248,6 +1253,13 @@ public final class InputLogic {
     }
 
     /**
+     * Handle a press on the language switch key (the "globe key")
+     */
+    private void handleLanguageSwitchKey() {
+        mLatinIME.switchToNextSubtype();
+    }
+
+    /**
      * Swap a space with a space-swapping punctuation sign.
      *
      * This method will check that there are two characters before the cursor and that the first
@@ -1441,6 +1453,7 @@ public final class InputLogic {
         }
 
         if (TextUtils.isEmpty(suggestion)) return;
+        if (EmojiSuggestions.isEmoji(suggestion)) return;
         final boolean wasAutoCapitalized =
                 mWordComposer.wasAutoCapitalized() && !mWordComposer.isMostlyCaps();
         final int timeStampInSeconds = (int)TimeUnit.MILLISECONDS.toSeconds(
