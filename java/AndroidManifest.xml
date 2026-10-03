@@ -111,6 +111,7 @@
              android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
 
@@ -131,7 +132,7 @@
         </activity>
 
         <activity android:name=".settings.SettingsActivity"
-             android:theme="@style/Theme.SettingsLib"
+             android:theme="@style/Theme.PenguinHig"
              android:label="@string/english_ime_settings"
              android:exported="true">
             <intent-filter>
@@ -139,8 +140,13 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".settings.LegacySettingsActivity"
+             android:theme="@style/platformSettingsTheme"
+             android:label="@string/english_ime_settings"
+             android:exported="false"/>
+
         <activity android:name=".spellcheck.SpellCheckerSettingsActivity"
-             android:theme="@style/Theme.SettingsLib"
+             android:theme="@style/platformSettingsTheme"
              android:label="@string/android_spell_checker_settings"
              android:exported="true">
             <intent-filter>
@@ -149,7 +155,7 @@
         </activity>
 
         <activity android:name="com.android.inputmethod.dictionarypack.DictionarySettingsActivity"
-             android:theme="@style/Theme.SettingsLib"
+             android:theme="@style/platformSettingsTheme"
              android:label="@string/dictionary_settings_title"
              android:uiOptions="splitActionBarWhenNarrow"
              android:exported="true">
@@ -169,7 +175,6 @@
 
         <!-- Unexported activity used for tests. -->
         <activity android:name=".settings.TestFragmentActivity"
-             android:theme="@style/Theme.SettingsLib"
              android:exported="false"/>
 
         <!-- Broadcast receivers -->
