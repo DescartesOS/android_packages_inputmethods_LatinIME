@@ -32,9 +32,8 @@ import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
+import android.content.res.TypedArray;
 import android.content.res.Resources;
-import android.graphics.Color;
-import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.inputmethodservice.InputMethodService;
@@ -58,13 +57,9 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup.LayoutParams;
 import android.view.Window;
-import android.view.WindowInsets;
-import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.inputmethod.CompletionInfo;
 import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InlineSuggestionsRequest;
-import android.view.inputmethod.InlineSuggestionsResponse;
 import android.view.inputmethod.InputMethodSubtype;
 
 import androidx.annotation.NonNull;
@@ -90,13 +85,12 @@ import com.android.inputmethod.keyboard.MainKeyboardView;
 import com.android.inputmethod.keyboard.emoji.EmojiSearchController;
 import com.android.inputmethod.latin.Suggest.OnGetSuggestedWordsCallback;
 import com.android.inputmethod.latin.SuggestedWords.SuggestedWordInfo;
-import com.android.inputmethod.latin.clipboard.ClipboardSuggestion;
-import com.android.inputmethod.latin.clipboard.ClipboardSuggestionMonitor;
 import com.android.inputmethod.latin.common.Constants;
 import com.android.inputmethod.latin.common.CoordinateUtils;
 import com.android.inputmethod.latin.common.InputPointers;
 import com.android.inputmethod.latin.define.DebugFlags;
 import com.android.inputmethod.latin.emoji.EmojiSuggestions;
+import com.android.inputmethod.latin.glass.AppAppearance;
 import com.android.inputmethod.latin.glass.ClipboardHistory;
 import com.android.inputmethod.latin.glass.Dictation;
 import com.android.inputmethod.latin.glass.FloatingKeyboard;
@@ -122,8 +116,6 @@ import com.android.inputmethod.latin.utils.JniUtils;
 import com.android.inputmethod.latin.utils.LeakGuardHandlerWrapper;
 import com.android.inputmethod.latin.utils.RecapitalizeStatus;
 import com.android.inputmethod.latin.utils.StatsUtils;
-import com.android.inputmethod.latin.utils.FloatingKeyboardUtils;
-import com.android.inputmethod.latin.utils.SplitKeyboardUtils;
 import com.android.inputmethod.latin.utils.StatsUtilsManager;
 import com.android.inputmethod.latin.utils.SubtypeLocaleUtils;
 import com.android.inputmethod.latin.utils.ViewLayoutUtils;
@@ -144,7 +136,6 @@ import javax.annotation.Nullable;
  */
 public class LatinIME extends InputMethodService implements KeyboardActionListener,
         SuggestionStripView.Listener, SuggestionStripViewAccessor,
-        ClipboardSuggestionMonitor.Listener,
         DictionaryFacilitator.DictionaryInitializationListener,
         PermissionsManager.PermissionsResultCallback {
     static final String TAG = LatinIME.class.getSimpleName();
@@ -190,6 +181,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     // TODO: Move these {@link View}s to {@link KeyboardSwitcher}.
     private View mInputView;
     private GlassWindow mGlassWindow;
+    private int mLastUiModeNight = -1;
     private ClipboardHistory mClipboardHistory;
     private GlassPanels mGlassPanels;
     private EmojiSearchController mEmojiSearch;
@@ -198,9 +190,7 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     private final ClipboardHistory.Listener mClipboardListener = () -> updateClipChip();
     private final int[] mTmpLocation = new int[2];
     private InsetsUpdater mInsetsUpdater;
-    private final Rect mFloatingPanelRect = new Rect();
     private SuggestionStripView mSuggestionStripView;
-    private ClipboardSuggestionMonitor mClipboardSuggestionMonitor;
 
     private RichInputMethodManager mRichImm;
     @UsedForTesting final KeyboardSwitcher mKeyboardSwitcher;
@@ -652,6 +642,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         Fonts.init(this);
         setTheme(R.style.PenguinImeWindow);
         super.onCreate();
+        mLastUiModeNight = getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
         mGlassWindow = new GlassWindow(this, getWindow().getWindow());
         updateGlassWindow();
         mClipboardHistory = new ClipboardHistory(this);
@@ -665,7 +657,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         EmojiSuggestions.init(this);
 
         mHandler.onCreate();
-        mClipboardSuggestionMonitor = new ClipboardSuggestionMonitor(this, this);
 
         // TODO: Resolve mutual dependencies of {@link #loadSettings()} and
         // {@link #resetDictionaryFacilitatorIfNecessary()}.
@@ -834,8 +825,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
 
     private void updateGlassWindow() {
         if (mGlassWindow != null) {
-            mGlassWindow.setEnabled(KeyboardTheme.isGlass(this));
+            final Context colors = mKeyboardSwitcher.getThemeContext();
+            mGlassWindow.setEnabled(KeyboardTheme.isGlass(this),
+                    colors != null ? colors : this);
         }
+    }
+
+    private Boolean appearanceOverride(final EditorInfo editorInfo) {
+        if (editorInfo == null || !mSettings.getCurrent().mMatchAppAppearance) return null;
+        final Boolean light = AppAppearance.isLight(this, editorInfo.packageName);
+        return light == null ? null : !light;
     }
 
     @Override
@@ -848,6 +847,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             setFloatingKeyboard(!FloatingKeyboard.isEnabled(this));
         } else if (viewId == R.id.glass_toolbar_theme) {
             launchThemeSettings();
+        } else if (viewId == R.id.glass_strip_grid) {
+            mGlassPanels.togglePanel(GlassPanels.PANEL_TOOLS);
         } else if (viewId == R.id.glass_toolbar_clipboard) {
             mGlassPanels.togglePanel(GlassPanels.PANEL_CLIPBOARD);
         } else if (viewId == R.id.glass_toolbar_edit) {
@@ -910,6 +911,36 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (mic != null) {
             mic.setVisibility(mSettings.getCurrent().mShowsVoiceInputKey
                     ? View.VISIBLE : View.INVISIBLE);
+        }
+        applyThemeToInputArea();
+    }
+
+    private void applyThemeToInputArea() {
+        final View keyboardView = mInputView.findViewById(R.id.keyboard_view);
+        if (keyboardView == null) return;
+        final boolean glass = KeyboardTheme.isGlass(this);
+        final Drawable keyboardBackground = keyboardView.getBackground();
+        if (glass || keyboardBackground == null
+                || keyboardBackground.getConstantState() == null) {
+            mInputView.setBackground(null);
+        } else {
+            mInputView.setBackground(keyboardBackground.getConstantState().newDrawable());
+        }
+        int iconColor = mInputView.getContext().getColor(R.color.glass_icon);
+        if (!glass) {
+            final TypedArray a = keyboardView.getContext().obtainStyledAttributes(null,
+                    R.styleable.Keyboard_Key, R.attr.keyboardViewStyle, R.style.KeyboardView);
+            iconColor = a.getColor(R.styleable.Keyboard_Key_keyTextColor, iconColor);
+            a.recycle();
+        }
+        final android.content.res.ColorStateList tint =
+                android.content.res.ColorStateList.valueOf(iconColor);
+        for (final int id : new int[] { R.id.glass_bar_globe, R.id.glass_bar_emoji,
+                R.id.glass_bar_mic }) {
+            final View v = mInputView.findViewById(id);
+            if (v instanceof android.widget.ImageView) {
+                ((android.widget.ImageView) v).setImageTintList(tint);
+            }
         }
     }
 
@@ -1098,6 +1129,17 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         }
 
         @Override
+        public void onToolAction(final int viewId) {
+            mGlassPanels.hidePanel();
+            if (viewId == R.id.glass_bar_emoji || viewId == R.id.glass_bar_mic) {
+                final View v = mInputView.findViewById(viewId);
+                if (v != null) v.performClick();
+                return;
+            }
+            onToolbarAction(viewId);
+        }
+
+        @Override
         public void enableClipboardHistory() {
             PreferenceManager.getDefaultSharedPreferences(LatinIME.this).edit()
                     .putBoolean(Settings.PREF_CLIPBOARD_HISTORY, true).apply();
@@ -1163,8 +1205,21 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
                 cleanupInternalStateForFinishInput();
             }
         }
+        final boolean nightChanged = mLastUiModeNight != (conf.uiMode
+                & Configuration.UI_MODE_NIGHT_MASK);
+        mLastUiModeNight = conf.uiMode & Configuration.UI_MODE_NIGHT_MASK;
         super.onConfigurationChanged(conf);
         updateGlassWindow();
+        if (nightChanged) {
+            AppAppearance.invalidate();
+            mKeyboardSwitcher.updateKeyboardTheme(mDisplayContext);
+            final EditorInfo editorInfo = getCurrentInputEditorInfo();
+            if (editorInfo != null && mInputView != null) {
+                mKeyboardSwitcher.loadKeyboard(editorInfo, mSettings.getCurrent(),
+                        getCurrentAutoCapsState(), getCurrentRecapitalizeState());
+                updateBottomBar();
+            }
+        }
     }
 
     @Override
@@ -1260,26 +1315,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     }
 
     @Override
-    @Nullable
-    public InlineSuggestionsRequest onCreateInlineSuggestionsRequest(
-            @Nonnull final Bundle uiExtras) {
-        if (!hasSuggestionStripView()) {
-            return null;
-        }
-        return mSuggestionStripView.createInlineSuggestionsRequest(uiExtras);
-    }
-
-    @Override
-    public boolean onInlineSuggestionsResponse(
-            @Nonnull final InlineSuggestionsResponse response) {
-        if (!hasSuggestionStripView()) {
-            return false;
-        }
-        mSuggestionStripView.setInlineSuggestions(response.getInlineSuggestions());
-        return true;
-    }
-
-    @Override
     public void onFinishInput() {
         mHandler.onFinishInput();
     }
@@ -1323,7 +1358,9 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         mGestureConsumer = GestureConsumer.NULL_GESTURE_CONSUMER;
         mRichImm.refreshSubtypeCaches();
         final KeyboardSwitcher switcher = mKeyboardSwitcher;
+        switcher.setNightOverride(appearanceOverride(editorInfo));
         switcher.updateKeyboardTheme(mDisplayContext);
+        updateGlassWindow();
         final MainKeyboardView mainKeyboardView = switcher.getMainKeyboardView();
         // If we are starting input in a different text field from before, we'll have to reload
         // settings, so currentSettingsValues can't be final.
@@ -1729,9 +1766,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
             // If there is a hardware keyboard, disable full screen mode.
             return false;
         }
-        if (settingsValues.mIsFloatingKeyboardEnabled) {
-            return false;
-        }
         // Reread resource value here, because this method is called by the framework as needed.
         final boolean isFullscreenModeAllowed = Settings.readUseFullscreenMode(getResources());
         if (super.onEvaluateFullscreenMode() && isFullscreenModeAllowed) {
@@ -1799,55 +1833,6 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         PermissionsManager.get(this).requestPermissions(
                 this /* PermissionsResultCallback */,
                 null /* activity */, permission.READ_CONTACTS);
-    }
-
-    public void reloadKeyboard() {
-        if (mKeyboardSwitcher.getMainKeyboardView() != null) {
-            mKeyboardSwitcher.loadKeyboard(getCurrentInputEditorInfo(), mSettings.getCurrent(),
-                    getCurrentAutoCapsState(), getCurrentRecapitalizeState());
-        }
-    }
-
-    @Override
-    public void pickClipboardSuggestion(final ClipboardSuggestion suggestion,
-            final ClipboardSuggestion.Match match) {
-        onTextInput(match.getText());
-        mClipboardSuggestionMonitor.consume(suggestion);
-    }
-
-    @Override
-    public void onClipboardSuggestionChanged(@Nullable final ClipboardSuggestion suggestion) {
-        if (hasSuggestionStripView()) {
-            mSuggestionStripView.setClipboardSuggestion(suggestion);
-        }
-    }
-
-    @Override
-    public void toggleFloatingKeyboard() {
-        FloatingKeyboardUtils.toggleFloatingKeyboard(
-                PreferenceManager.getDefaultSharedPreferences(this));
-        loadSettings();
-        updateFullscreenMode();
-        updateNavigationBarColor();
-        if (mKeyboardSwitcher.getMainKeyboardView() != null) {
-            mKeyboardSwitcher.loadKeyboard(getCurrentInputEditorInfo(), mSettings.getCurrent(),
-                    getCurrentAutoCapsState(), getCurrentRecapitalizeState());
-        }
-        if (hasSuggestionStripView()) {
-            mSuggestionStripView.updateVisibility(
-                    !mSettings.getCurrent().mInputAttributes.mIsPasswordField,
-                    isFullscreenMode());
-        }
-    }
-
-    @Override
-    public void toggleSplitKeyboard() {
-        SplitKeyboardUtils.toggleSplitKeyboard(PreferenceManager.getDefaultSharedPreferences(this));
-        loadSettings();
-        if (mKeyboardSwitcher.getMainKeyboardView() != null) {
-            mKeyboardSwitcher.loadKeyboard(getCurrentInputEditorInfo(), mSettings.getCurrent(),
-                    getCurrentAutoCapsState(), getCurrentRecapitalizeState());
-        }
     }
 
     @Override
@@ -1960,6 +1945,16 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
     public void switchLanguage(final InputMethodSubtype subtype) {
         final IBinder token = getWindow().getWindow().getAttributes().token;
         mRichImm.setInputMethodAndSubtype(token, subtype);
+    }
+
+    // TODO: Revise the language switch key behavior to make it much smarter and more reasonable.
+    public void switchToNextSubtype() {
+        final IBinder token = getWindow().getWindow().getAttributes().token;
+        if (shouldSwitchToOtherInputMethods()) {
+            mRichImm.switchToNextInputMethod(token, false /* onlyCurrentIme */);
+            return;
+        }
+        mSubtypeState.switchSubtype(token, mRichImm);
     }
 
     // TODO: Instead of checking for alphabetic keyboard here, separate keycodes for
@@ -2137,8 +2132,12 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         final boolean shouldShowSuggestionCandidates =
                 currentSettingsValues.mInputAttributes.mShouldShowSuggestions
                 && currentSettingsValues.isSuggestionsEnabledPerUserSettings();
-        final boolean shouldShowSuggestionsStrip =
-                !currentSettingsValues.mInputAttributes.mIsPasswordField;
+        final boolean shouldShowSuggestionsStripUnlessPassword = shouldShowImportantNotice
+                || currentSettingsValues.mShowsVoiceInputKey
+                || shouldShowSuggestionCandidates
+                || currentSettingsValues.isApplicationSpecifiedCompletionsOn();
+        final boolean shouldShowSuggestionsStrip = shouldShowSuggestionsStripUnlessPassword
+                && !currentSettingsValues.mInputAttributes.mIsPasswordField;
         mSuggestionStripView.updateVisibility(shouldShowSuggestionsStrip, isFullscreenMode());
         if (!shouldShowSuggestionsStrip) {
             return;
@@ -2550,6 +2549,30 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         // TODO: Dump all settings values
     }
 
+    public boolean shouldSwitchToOtherInputMethods() {
+        // TODO: Revisit here to reorganize the settings. Probably we can/should use different
+        // strategy once the implementation of
+        // {@link InputMethodManager#shouldOfferSwitchingToNextInputMethod} is defined well.
+        final boolean fallbackValue = mSettings.getCurrent().mIncludesOtherImesInLanguageSwitchList;
+        final IBinder token = getWindow().getWindow().getAttributes().token;
+        if (token == null) {
+            return fallbackValue;
+        }
+        return mRichImm.shouldOfferSwitchingToNextInputMethod(token, fallbackValue);
+    }
+
+    public boolean shouldShowLanguageSwitchKey() {
+        // TODO: Revisit here to reorganize the settings. Probably we can/should use different
+        // strategy once the implementation of
+        // {@link InputMethodManager#shouldOfferSwitchingToNextInputMethod} is defined well.
+        final boolean fallbackValue = mSettings.getCurrent().isLanguageSwitchKeyEnabled();
+        final IBinder token = getWindow().getWindow().getAttributes().token;
+        if (token == null) {
+            return fallbackValue;
+        }
+        return mRichImm.shouldOfferSwitchingToNextInputMethod(token, fallbackValue);
+    }
+
     /** @noinspection deprecation*/
     private void updateNavigationBarColor() {
         // This may happen for devices with a physical keyboard
@@ -2559,19 +2582,8 @@ public class LatinIME extends InputMethodService implements KeyboardActionListen
         if (BuildCompatUtils.EFFECTIVE_SDK_INT > Build.VERSION_CODES.R) {
             Drawable bg = mInputView.findViewById(R.id.keyboard_view).getBackground();
             Window w = getWindow().getWindow();
-            final boolean isFloating = mSettings.getCurrent().mIsFloatingKeyboardEnabled;
-            if (isFloating) {
-                w.setNavigationBarColor(Color.TRANSPARENT);
-            } else if (bg instanceof ColorDrawable) {
+            if (bg instanceof ColorDrawable) {
                 w.setNavigationBarColor(((ColorDrawable) bg).getColor());
-            }
-            final WindowInsetsController insetsController = w.getInsetsController();
-            if (insetsController != null) {
-                if (isFloating) {
-                    insetsController.hide(WindowInsets.Type.captionBar());
-                } else {
-                    insetsController.show(WindowInsets.Type.captionBar());
-                }
             }
 
             int nightModeFlags = mDisplayContext.getResources().getConfiguration().uiMode &

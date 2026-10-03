@@ -16,12 +16,11 @@
 
 package com.android.inputmethod.latin.settings;
 
+import android.app.Activity;
+import android.app.Fragment;
+import android.app.FragmentManager;
 import android.content.Intent;
 import android.os.Bundle;
-
-import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentActivity;
-import androidx.fragment.app.FragmentManager;
 
 /**
  * Test activity to use when testing preference fragments. <br/>
@@ -30,7 +29,7 @@ import androidx.fragment.app.FragmentManager;
  * and call setIntent() with an intent that specifies the fragment to load in the activity.
  * The fragment can then be obtained from this activity and used for testing/verification.
  */
-public final class TestFragmentActivity extends FragmentActivity {
+public final class TestFragmentActivity extends Activity {
     /**
      * The fragment name that should be loaded when starting this activity.
      * This must be specified when starting this activity, as this activity is only
@@ -49,9 +48,8 @@ public final class TestFragmentActivity extends FragmentActivity {
             throw new IllegalArgumentException("No fragment name specified for testing");
         }
 
-        FragmentManager fragmentManager = getSupportFragmentManager();
-        mFragment = fragmentManager.getFragmentFactory().instantiate(
-                getClassLoader(), fragmentName);
+        mFragment = Fragment.instantiate(this, fragmentName);
+        FragmentManager fragmentManager = getFragmentManager();
         fragmentManager.beginTransaction().add(mFragment, fragmentName).commit();
     }
 }

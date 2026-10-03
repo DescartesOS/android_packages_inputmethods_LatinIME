@@ -71,12 +71,11 @@ public class SettingsValues {
     public final boolean mShowNumberRowPassword;
     public final boolean mShowLongpressHints;
     public final boolean mShowToolbar;
+    public final boolean mMatchAppAppearance;
     public final boolean mEmojiSuggestionsEnabled;
     public final boolean mShowPunctuationKeys;
     public final boolean mClipboardHistoryEnabled;
     public final boolean mClipboardSuggestionEnabled;
-    public final boolean mSpaceCursorEnabled;
-    public final boolean mDeleteSwipeEnabled;
     public final int mOneHandedMode;
     public final boolean mIncludesOtherImesInLanguageSwitchList;
     public final boolean mShowsLanguageSwitchKey;
@@ -87,7 +86,6 @@ public class SettingsValues {
     public final boolean mBlockPotentiallyOffensive;
     public final boolean mSpaceTrackpadEnabled;
     public final boolean mBackspaceTrackpadEnabled;
-    public final boolean mSwipeDownForDigitsEnabled;
     // Use bigrams to predict the next word when there is no input for it yet
     public final boolean mBigramPredictionEnabled;
     public final boolean mGestureInputEnabled;
@@ -103,8 +101,6 @@ public class SettingsValues {
     public final boolean mShouldShowLxxSuggestionUi;
     // Use split layout for keyboard.
     public final boolean mIsSplitKeyboardEnabled;
-    public final boolean mIsFloatingKeyboardEnabled;
-    public final boolean mSplitKeyboardDuplicateKeys;
     public final int mScreenMetrics;
 
     // From the input box
@@ -160,12 +156,11 @@ public class SettingsValues {
         mShowNumberRowPassword = prefs.getBoolean(Settings.PREF_SHOW_NUMBER_ROW_PASSWORD, false);
         mShowLongpressHints = prefs.getBoolean(Settings.PREF_SHOW_LONGPRESS_HINTS, true);
         mShowToolbar = prefs.getBoolean(Settings.PREF_SHOW_TOOLBAR, true);
+        mMatchAppAppearance = prefs.getBoolean(Settings.PREF_MATCH_APP_APPEARANCE, true);
         mEmojiSuggestionsEnabled = prefs.getBoolean(Settings.PREF_EMOJI_SUGGESTIONS, true);
         mShowPunctuationKeys = prefs.getBoolean(Settings.PREF_SHOW_PUNCTUATION_KEYS, true);
         mClipboardHistoryEnabled = prefs.getBoolean(Settings.PREF_CLIPBOARD_HISTORY, true);
         mClipboardSuggestionEnabled = prefs.getBoolean(Settings.PREF_CLIPBOARD_SUGGESTION, true);
-        mSpaceCursorEnabled = prefs.getBoolean(Settings.PREF_SPACE_CURSOR, true);
-        mDeleteSwipeEnabled = prefs.getBoolean(Settings.PREF_DELETE_SWIPE, true);
         mOneHandedMode = prefs.getInt(Settings.PREF_ONE_HANDED_MODE, Settings.ONE_HANDED_OFF);
         mIncludesOtherImesInLanguageSwitchList = Settings.ENABLE_SHOW_LANGUAGE_SWITCH_KEY_SETTINGS
                 ? prefs.getBoolean(Settings.PREF_INCLUDE_OTHER_IMES_IN_LANGUAGE_SWITCH_LIST, false)
@@ -187,9 +182,6 @@ public class SettingsValues {
         mHasHardwareKeyboard = Settings.readHasHardwareKeyboard(res.getConfiguration());
         mEnableMetricsLogging = prefs.getBoolean(Settings.PREF_ENABLE_METRICS_LOGGING, true);
         mIsSplitKeyboardEnabled = prefs.getBoolean(Settings.PREF_ENABLE_SPLIT_KEYBOARD, false);
-        mIsFloatingKeyboardEnabled = prefs.getBoolean(Settings.PREF_FLOATING_KEYBOARD, false);
-        mSplitKeyboardDuplicateKeys = prefs.getBoolean(
-                Settings.PREF_SPLIT_KEYBOARD_DUPLICATE_KEYS, true);
         mScreenMetrics = Settings.readScreenMetrics(res);
 
         mShouldShowLxxSuggestionUi = Settings.SHOULD_SHOW_LXX_SUGGESTION_UI
@@ -254,7 +246,6 @@ public class SettingsValues {
         }
         mSpaceTrackpadEnabled = Settings.readSpaceTrackpadEnabled(prefs);
         mBackspaceTrackpadEnabled = Settings.readBackspaceTrackpadEnabled(prefs);
-        mSwipeDownForDigitsEnabled = Settings.readSwipeDownForDigitsEnabled(prefs);
     }
 
     public boolean isMetricsLoggingEnabled() {
@@ -301,6 +292,17 @@ public class SettingsValues {
 
     public boolean shouldInsertSpacesAutomatically() {
         return mInputAttributes.mShouldInsertSpacesAutomatically;
+    }
+
+    public boolean isLanguageSwitchKeyEnabled() {
+        if (!mShowsLanguageSwitchKey) {
+            return false;
+        }
+        final RichInputMethodManager imm = RichInputMethodManager.getInstance();
+        if (mIncludesOtherImesInLanguageSwitchList) {
+            return imm.hasMultipleEnabledIMEsOrSubtypes(false /* include aux subtypes */);
+        }
+        return imm.hasMultipleEnabledSubtypesInThisIme(false /* include aux subtypes */);
     }
 
     public boolean isSameInputType(final EditorInfo editorInfo) {
@@ -412,6 +414,10 @@ public class SettingsValues {
         sb.append("" + mKeyPreviewPopupOn);
         sb.append("\n   mShowsVoiceInputKey = ");
         sb.append("" + mShowsVoiceInputKey);
+        sb.append("\n   mIncludesOtherImesInLanguageSwitchList = ");
+        sb.append("" + mIncludesOtherImesInLanguageSwitchList);
+        sb.append("\n   mShowsLanguageSwitchKey = ");
+        sb.append("" + mShowsLanguageSwitchKey);
         sb.append("\n   mUseContactsDict = ");
         sb.append("" + mUseContactsDict);
         sb.append("\n   mUsePersonalizedDicts = ");

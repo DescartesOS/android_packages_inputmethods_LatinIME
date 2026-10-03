@@ -31,7 +31,6 @@ import com.android.inputmethod.latin.InputAttributes;
 import com.android.inputmethod.latin.R;
 import com.android.inputmethod.latin.common.StringUtils;
 import com.android.inputmethod.latin.utils.AdditionalSubtypeUtils;
-import com.android.inputmethod.latin.utils.JniUtils;
 import com.android.inputmethod.latin.utils.ResourceUtils;
 import com.android.inputmethod.latin.utils.RunInLocale;
 import com.android.inputmethod.latin.utils.StatsUtils;
@@ -73,14 +72,17 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
             "pref_key_use_double_space_period";
     public static final String PREF_BLOCK_POTENTIALLY_OFFENSIVE =
             "pref_key_block_potentially_offensive";
+    public static final boolean ENABLE_SHOW_LANGUAGE_SWITCH_KEY_SETTINGS =
+            BuildCompatUtils.EFFECTIVE_SDK_INT <= Build.VERSION_CODES.KITKAT;
     public static final boolean SHOULD_SHOW_LXX_SUGGESTION_UI =
             BuildCompatUtils.EFFECTIVE_SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
+    public static final String PREF_SHOW_LANGUAGE_SWITCH_KEY =
+            "pref_show_language_switch_key";
     public static final String PREF_SHOW_EMOJI_KEY = "pref_show_emoji_key";
+    public static final String PREF_INCLUDE_OTHER_IMES_IN_LANGUAGE_SWITCH_LIST =
+            "pref_include_other_imes_in_language_switch_list";
     public static final String PREF_CUSTOM_INPUT_STYLES = "custom_input_styles";
     public static final String PREF_ENABLE_SPLIT_KEYBOARD = "pref_split_keyboard";
-    public static final String PREF_FLOATING_KEYBOARD = "pref_floating_keyboard";
-    public static final String PREF_SPLIT_KEYBOARD_DUPLICATE_KEYS =
-            "pref_split_keyboard_duplicate_keys";
     // TODO: consolidate key preview dismiss delay with the key preview animation parameters.
     public static final String PREF_KEY_PREVIEW_POPUP_DISMISS_DELAY =
             "pref_key_preview_popup_dismiss_delay";
@@ -105,12 +107,11 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
 
     public static final String PREF_SHOW_LONGPRESS_HINTS = "pref_show_longpress_hints";
     public static final String PREF_SHOW_TOOLBAR = "pref_show_toolbar";
+    public static final String PREF_MATCH_APP_APPEARANCE = "pref_match_app_appearance";
     public static final String PREF_EMOJI_SUGGESTIONS = "pref_emoji_suggestions";
     public static final String PREF_SHOW_PUNCTUATION_KEYS = "pref_show_punctuation_keys";
     public static final String PREF_CLIPBOARD_HISTORY = "pref_clipboard_history";
     public static final String PREF_CLIPBOARD_SUGGESTION = "pref_clipboard_suggestion";
-    public static final String PREF_SPACE_CURSOR = "pref_space_cursor";
-    public static final String PREF_DELETE_SWIPE = "pref_delete_swipe";
     public static final String PREF_ONE_HANDED_MODE = "pref_one_handed_mode";
     public static final int ONE_HANDED_OFF = 0;
     public static final int ONE_HANDED_LEFT = 1;
@@ -135,8 +136,6 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
 
     // Backspace key trackpad slider
     public static final String PREF_BACKSPACE_TRACKPAD = "pref_backspace_trackpad";
-
-    public static final String PREF_SWIPE_DOWN_FOR_DIGITS = "pref_swipe_down_for_digits";
 
     // Emoji
     public static final String PREF_EMOJI_RECENT_KEYS = "emoji_recent_keys";
@@ -256,9 +255,6 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     }
 
     public static boolean readFromBuildConfigIfGestureInputEnabled(final Resources res) {
-        if (!JniUtils.sHaveGestureLib) {
-            return false;
-        }
         return res.getBoolean(R.bool.config_gesture_input_enabled_by_build_config);
     }
 
@@ -287,6 +283,18 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
         return Integer.parseInt(prefs.getString(PREF_KEY_PREVIEW_POPUP_DISMISS_DELAY,
                 Integer.toString(res.getInteger(
                         R.integer.config_key_preview_linger_timeout))));
+    }
+
+    public static boolean readShowsLanguageSwitchKey(final SharedPreferences prefs) {
+        if (prefs.contains(PREF_SUPPRESS_LANGUAGE_SWITCH_KEY)) {
+            final boolean suppressLanguageSwitchKey = prefs.getBoolean(
+                    PREF_SUPPRESS_LANGUAGE_SWITCH_KEY, false);
+            final SharedPreferences.Editor editor = prefs.edit();
+            editor.remove(PREF_SUPPRESS_LANGUAGE_SWITCH_KEY);
+            editor.putBoolean(PREF_SHOW_LANGUAGE_SWITCH_KEY, !suppressLanguageSwitchKey);
+            editor.apply();
+        }
+        return prefs.getBoolean(PREF_SHOW_LANGUAGE_SWITCH_KEY, true);
     }
 
     public static String readPrefAdditionalSubtypes(final SharedPreferences prefs,
@@ -376,10 +384,6 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
 
     public static boolean readBackspaceTrackpadEnabled(final SharedPreferences prefs) {
         return prefs.getBoolean(PREF_BACKSPACE_TRACKPAD, true);
-    }
-
-    public static boolean readSwipeDownForDigitsEnabled(final SharedPreferences prefs) {
-        return prefs.getBoolean(PREF_SWIPE_DOWN_FOR_DIGITS, false);
     }
 
     public static boolean readUseFullscreenMode(final Resources res) {

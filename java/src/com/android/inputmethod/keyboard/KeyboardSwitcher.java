@@ -17,11 +17,8 @@
 package com.android.inputmethod.keyboard;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.graphics.Rect;
-import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
@@ -46,14 +43,11 @@ import com.android.inputmethod.latin.glass.FloatingKeyboard;
 import com.android.inputmethod.latin.glass.GlassPanels;
 import com.android.inputmethod.latin.settings.Settings;
 import com.android.inputmethod.latin.settings.SettingsValues;
-import com.android.inputmethod.latin.suggestions.SuggestionStripView;
 import com.android.inputmethod.latin.utils.CapsModeUtils;
-import com.android.inputmethod.latin.utils.FloatingKeyboardUtils;
 import com.android.inputmethod.latin.utils.LanguageOnSpacebarUtils;
 import com.android.inputmethod.latin.utils.RecapitalizeStatus;
 import com.android.inputmethod.latin.utils.ResourceUtils;
 import com.android.inputmethod.latin.utils.ScriptUtils;
-import com.android.inputmethod.latin.utils.SplitKeyboardUtils;
 
 import javax.annotation.Nonnull;
 
@@ -64,9 +58,6 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
     private View mMainKeyboardFrame;
     private MainKeyboardView mKeyboardView;
     private EmojiPalettesView mEmojiPalettesView;
-    private FloatingKeyboardController mFloatingKeyboardController;
-    private boolean mIsFloating;
-    private int mFloatingKeyboardWidth;
     private LatinIME mLatinIME;
     private RichInputMethodManager mRichImm;
     private boolean mIsHardwareAcceleratedDrawingEnabled;
@@ -80,6 +71,25 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
     private KeyboardTheme mKeyboardTheme;
     private Context mThemeContext;
     private int mActiveUiMode;
+    private Resources mBaseResources;
+    private Boolean mNightOverride;
+
+    public boolean setNightOverride(final Boolean night) {
+        if (java.util.Objects.equals(mNightOverride, night)) return false;
+        mNightOverride = night;
+        return true;
+    }
+
+    public Context getThemeContext() {
+        return mThemeContext;
+    }
+
+    private int effectiveUiMode(final Context context) {
+        final int uiMode = context.getResources().getConfiguration().uiMode;
+        if (mNightOverride == null) return uiMode;
+        return (uiMode & ~Configuration.UI_MODE_NIGHT_MASK)
+                | (mNightOverride ? Configuration.UI_MODE_NIGHT_YES : Configuration.UI_MODE_NIGHT_NO);
+    }
 
     private static final KeyboardSwitcher sInstance = new KeyboardSwitcher();
 
@@ -114,14 +124,22 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
 
     private boolean updateKeyboardThemeAndContextThemeWrapper(final Context context,
             final KeyboardTheme keyboardTheme) {
+        final int uiMode = effectiveUiMode(context);
         final boolean darkModeChanged = (mActiveUiMode & Configuration.UI_MODE_NIGHT_MASK)
-                != (context.getResources().getConfiguration().uiMode
-                    & Configuration.UI_MODE_NIGHT_MASK);
+                != (uiMode & Configuration.UI_MODE_NIGHT_MASK);
         if (mThemeContext == null || !keyboardTheme.equals(mKeyboardTheme) || darkModeChanged
-                || !mThemeContext.getResources().equals(context.getResources())) {
+                || !context.getResources().equals(mBaseResources)) {
             mKeyboardTheme = keyboardTheme;
-            mThemeContext = new ContextThemeWrapper(context, keyboardTheme.mStyleId);
-            mActiveUiMode = context.getResources().getConfiguration().uiMode;
+            mBaseResources = context.getResources();
+            final ContextThemeWrapper themeContext =
+                    new ContextThemeWrapper(context, keyboardTheme.mStyleId);
+            if (mNightOverride != null) {
+                final Configuration override = new Configuration();
+                override.uiMode = uiMode;
+                themeContext.applyOverrideConfiguration(override);
+            }
+            mThemeContext = themeContext;
+            mActiveUiMode = uiMode;
             KeyboardLayoutSet.onKeyboardThemeChanged();
             return true;
         }
@@ -147,16 +165,11 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
         builder.setNumberRowEnabled(settingsValues.mShowNumberRow);
         builder.setPunctuationKeysEnabled(settingsValues.mShowPunctuationKeys);
         builder.setNumberRowPasswordEnabled(settingsValues.mShowNumberRowPassword);
+        builder.setLanguageSwitchKeyEnabled(mLatinIME.shouldShowLanguageSwitchKey());
         builder.setEmojiKeyEnabled(settingsValues.mShowsEmojiKey);
-        builder.setSplitLayoutEnabledByUser(isSplitLayout);
-        builder.setSplitDuplicateKeysEnabled(settingsValues.mSplitKeyboardDuplicateKeys);
-        builder.setFloatingKeyboard(isFloating);
+        builder.setSplitLayoutEnabledByUser(ProductionFlags.IS_SPLIT_KEYBOARD_SUPPORTED
+                && settingsValues.mIsSplitKeyboardEnabled);
         mKeyboardLayoutSet = builder.build();
-        mIsFloating = isFloating;
-        mFloatingKeyboardWidth = keyboardWidth;
-        if (mFloatingKeyboardController != null) {
-            mFloatingKeyboardController.setFloating(isFloating, keyboardWidth);
-        }
         try {
             mState.onLoadKeyboard(currentAutoCapsState, currentRecapitalizeState);
             mKeyboardTextsSet.setLocale(mRichImm.getCurrentSubtypeLocale(), mThemeContext);
@@ -462,14 +475,6 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
         return mEmojiPalettesView != null && mEmojiPalettesView.isShown();
     }
 
-    public boolean isFloatingKeyboard() {
-        return mFloatingKeyboardController != null && mFloatingKeyboardController.isFloating();
-    }
-
-    public void getFloatingPanelRect(final Rect outRect) {
-        mFloatingKeyboardController.getPanelRect(outRect);
-    }
-
     public boolean isShowingMoreKeysPanel() {
         if (isShowingEmojiPalettes()) {
             return false;
@@ -518,42 +523,6 @@ public final class KeyboardSwitcher implements KeyboardState.SwitchActions {
         mEmojiPalettesView.setHardwareAcceleratedDrawingEnabled(
                 isHardwareAcceleratedDrawingEnabled);
         mEmojiPalettesView.setKeyboardActionListener(mLatinIME);
-
-        final View dragHandle = mCurrentInputView.findViewById(R.id.floating_drag_handle);
-        if (mKeyboardView.getBackground() != null) {
-            dragHandle.setBackground(
-                    mKeyboardView.getBackground().getConstantState().newDrawable());
-        }
-        final SuggestionStripView strip =
-                mCurrentInputView.findViewById(R.id.suggestion_strip_view);
-        dragHandle.findViewById(R.id.floating_drag_handle_pill)
-                .setBackgroundTintList(strip.getToolKeyTintList());
-        mFloatingKeyboardController = new FloatingKeyboardController(mCurrentInputView,
-                mMainKeyboardFrame, mEmojiPalettesView, dragHandle, mKeyboardView.getBackground(),
-                strip.getToolKeyTintList(),
-                PreferenceManager.getDefaultSharedPreferences(mLatinIME),
-                new FloatingKeyboardController.Listener() {
-                    @Override
-                    public void onFloatingKeyboardDocked() {
-                        mLatinIME.toggleFloatingKeyboard();
-                    }
-
-                    @Override
-                    public void onFloatingKeyboardResized() {
-                        mLatinIME.reloadKeyboard();
-                    }
-
-                    @Override
-                    public void onFloatingKeyboardHideRequested() {
-                        mLatinIME.requestHideSelf(0);
-                    }
-
-                    @Override
-                    public void onFloatingKeyboardSwitchImeRequested() {
-                        mRichImm.getInputMethodManager().showInputMethodPicker();
-                    }
-                });
-        mFloatingKeyboardController.setFloating(mIsFloating, mFloatingKeyboardWidth);
         return mCurrentInputView;
     }
 
