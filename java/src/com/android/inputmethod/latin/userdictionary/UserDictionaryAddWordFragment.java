@@ -17,14 +17,12 @@
 package com.android.inputmethod.latin.userdictionary;
 
 import com.android.inputmethod.latin.R;
-import com.android.inputmethod.latin.settings.SettingsBaseActivity;
 import com.android.inputmethod.latin.userdictionary.UserDictionaryAddWordContents.LocaleRenderer;
 import com.android.inputmethod.latin.userdictionary.UserDictionaryLocalePicker.LocationChangedListener;
 
-import androidx.appcompat.app.ActionBar;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.fragment.app.Fragment;
+import android.app.Fragment;
 import android.os.Bundle;
+import android.preference.PreferenceActivity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
@@ -62,7 +60,7 @@ public class UserDictionaryAddWordFragment extends Fragment
     public void onActivityCreated(final Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
         setHasOptionsMenu(true);
-        getActivity().setTitle(R.string.edit_personal_dictionary);
+        getActivity().getActionBar().setTitle(R.string.edit_personal_dictionary);
         // Keep the instance so that we remember mContents when configuration changes (eg rotation)
         setRetainInstance(true);
     }
@@ -85,11 +83,8 @@ public class UserDictionaryAddWordFragment extends Fragment
             mContents = new UserDictionaryAddWordContents(mRootView,
                     mContents /* oldInstanceToBeEdited */);
         }
-        final ActionBar actionBar = ((AppCompatActivity) requireActivity()).getSupportActionBar();
-        if (actionBar != null) {
-            actionBar.setSubtitle(UserDictionarySettingsUtils.getLocaleDisplayName(
-                    getActivity(), mContents.getCurrentUserDictionaryLocale()));
-        }
+        getActivity().getActionBar().setSubtitle(UserDictionarySettingsUtils.getLocaleDisplayName(
+                getActivity(), mContents.getCurrentUserDictionaryLocale()));
         return mRootView;
     }
 
@@ -160,8 +155,8 @@ public class UserDictionaryAddWordFragment extends Fragment
             final long id) {
         final LocaleRenderer locale = (LocaleRenderer)parent.getItemAtPosition(pos);
         if (locale.isMoreLanguages()) {
-            ((SettingsBaseActivity) requireActivity()).startFragment(
-                    new UserDictionaryLocalePicker(), null);
+            PreferenceActivity preferenceActivity = (PreferenceActivity)getActivity();
+            preferenceActivity.startPreferenceFragment(new UserDictionaryLocalePicker(), true);
         } else {
             mContents.updateLocale(locale.getLocaleString());
         }
